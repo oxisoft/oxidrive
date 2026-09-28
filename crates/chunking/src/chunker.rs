@@ -297,6 +297,52 @@ mod tests {
         assert!(!text.contains("gear"), "{text}");
     }
 
+    /// Boundaries after an insertion line up again, and from there on every chunk is
+    /// identical: what keeps delta sync cheap. How soon this happens is probabilistic, so it is
+    /// checked on fixed inputs (including the case that exposed the old, flaky bound).
+    #[test]
+    fn boundaries_resynchronise_after_an_insertion() {
+        for (seed, at, insert) in [
+            (16, 16_933, 135),
+            (1, 0, 1),
+            (2, 50_000, 199),
+            (3, 99_000, 10),
+            (4, 1_234, 64),
+            (5, 70_001, 1),
+        ] {
+            let data = random_bytes(seed, 100_000);
+            let mut edited = data.clone();
+            edited.splice(at..at, random_bytes(seed.wrapping_add(1), insert));
+            let chunker = keyed(seed, SMALL);
+            let offsets = |bytes: &[u8]| -> Vec<usize> {
+                chunker
+                    .chunks(bytes)
+                    .scan(0, |end, chunk| {
+                        *end += chunk.len();
+                        Some(*end)
+                    })
+                    .collect()
+            };
+            let before = offsets(&data);
+            // Boundaries after the insertion, moved back into the original's coordinates.
+            let after: Vec<usize> = offsets(&edited)
+                .into_iter()
+                .filter(|&end| end >= at + insert)
+                .map(|end| end - insert)
+                .collect();
+            let resync = after
+                .iter()
+                .find(|end| before.contains(end))
+                .copied()
+                .unwrap();
+            assert!(resync <= at + 4 * 1024, "seed {seed}: resync at {resync}");
+            let tail = |ends: &[usize]| -> Vec<usize> {
+                ends.iter().copied().filter(|&end| end >= resync).collect()
+            };
+            assert_eq!(tail(&before), tail(&after), "seed {seed}");
+        }
+    }
+
     proptest! {
         #![proptest_config(ProptestConfig::with_cases(64))]
 
@@ -344,17 +390,24 @@ mod tests {
             prop_assert_eq!(streamed, expected);
         }
 
+        /// A cut depends only on the bytes of its own window (at most `max` bytes) and, near
+        /// the end of the data, on how much remains. So every chunk that starts at least `max`
+        /// bytes before an insertion is guaranteed unchanged.
         #[test]
-        fn an_insertion_only_disturbs_nearby_chunks(seed in any::<u8>(), at in 0usize..100_000, insert in 1usize..200) {
+        fn chunks_well_before_an_insertion_are_unchanged(seed in any::<u8>(), at in 0usize..100_000, insert in 1usize..200) {
             let data = random_bytes(seed, 100_000);
             let mut edited = data.clone();
             edited.splice(at..at, random_bytes(seed.wrapping_add(1), insert));
             let chunker = keyed(seed, SMALL);
-            let before: Vec<&[u8]> = chunker.chunks(&data).collect();
             let after: Vec<&[u8]> = chunker.chunks(&edited).collect();
-            // Every chunk that ends well before the edit, or starts well after it, survives.
-            let unchanged = before.iter().filter(|chunk| after.contains(chunk)).count();
-            prop_assert!(unchanged + 8 >= before.len(), "{unchanged} of {}", before.len());
+            let mut start = 0;
+            for (i, chunk) in chunker.chunks(&data).enumerate() {
+                if start + 1024 > at {
+                    break;
+                }
+                prop_assert_eq!(after[i], chunk);
+                start += chunk.len();
+            }
         }
     }
 }
