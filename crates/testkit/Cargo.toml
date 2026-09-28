@@ -9,5 +9,16 @@ repository.workspace = true
 homepage.workspace = true
 publish = false
 
+[dependencies]
+oxisoft-drive-chunking.workspace = true
+oxisoft-drive-core.workspace = true
+oxisoft-drive-crypto.workspace = true
+oxisoft-drive-proto.workspace = true
+rand_chacha.workspace = true
+rand_core.workspace = true
+
+[dev-dependencies]
+proptest.workspace = true
+
 [lints]
 workspace = true

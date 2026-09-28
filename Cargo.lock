@@ -521,11 +521,13 @@ version = "0.1.0"
 name = "oxisoft-drive-core"
 version = "0.1.0"
 dependencies = [
+ "oxisoft-drive-chunking",
  "oxisoft-drive-crypto",
  "oxisoft-drive-proto",
  "proptest",
  "rand_chacha 0.10.0",
  "rand_core 0.10.1",
+ "thiserror",
 ]
 
 [[package]]
@@ -578,6 +580,15 @@ version = "0.1.0"
 [[package]]
 name = "oxisoft-drive-testkit"
 version = "0.1.0"
+dependencies = [
+ "oxisoft-drive-chunking",
+ "oxisoft-drive-core",
+ "oxisoft-drive-crypto",
+ "oxisoft-drive-proto",
+ "proptest",
+ "rand_chacha 0.10.0",
+ "rand_core 0.10.1",
+]
 
 [[package]]
 name = "pkg-config"

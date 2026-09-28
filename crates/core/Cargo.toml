@@ -11,10 +11,12 @@ keywords.workspace = true
 categories.workspace = true
 
 [dependencies]
+oxisoft-drive-chunking.workspace = true
+oxisoft-drive-crypto.workspace = true
 oxisoft-drive-proto.workspace = true
+thiserror.workspace = true
 
 [dev-dependencies]
-oxisoft-drive-crypto.workspace = true
 proptest.workspace = true
 rand_chacha.workspace = true
 rand_core.workspace = true

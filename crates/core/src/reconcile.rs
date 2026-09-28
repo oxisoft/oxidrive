@@ -549,6 +549,14 @@ impl<'a> Planner<'a> {
             .map(|name| (self.local_parent(path), self.key(name)))
     }
 
+    /// Placements for detecting moves and renames compare exact names: on a case-insensitive
+    /// file system `a` → `A` is still a rename to sync. Collisions use [`Self::key`].
+    fn exact<T>(placement: Option<(Parent, T)>, name: Option<&Name>) -> Option<(Parent, String)> {
+        placement
+            .zip(name)
+            .map(|((parent, _), name)| (parent, name.as_str().to_owned()))
+    }
+
     fn base_placement(&self, entry: &BaseEntry) -> Option<Placement> {
         let parent = match entry.path.parent() {
             Some(parent) if !parent.is_root() => self
@@ -570,11 +578,12 @@ impl<'a> Planner<'a> {
     }
 
     fn observe(&self, node: NodeId, entry: &BaseEntry) -> Obs {
-        let base_placement = self.base_placement(entry);
+        let base_placement = Self::exact(self.base_placement(entry), entry.path.name());
         let mut obs = Obs::default();
         if let Some(path) = self.local_path.get(&node) {
             obs.local = Some(path.clone());
-            obs.local_moved = self.placement_of_path(path) != base_placement;
+            obs.local_moved =
+                Self::exact(self.placement_of_path(path), path.name()) != base_placement;
             if let (
                 BaseKind::File { stat, content },
                 Some(LocalEntry::File {
@@ -599,7 +608,11 @@ impl<'a> Planner<'a> {
             .is_none_or(|remote| remote.version != entry.version || self.resurrect.contains(&node));
         if changed {
             obs.remote_change = RemoteChange::Changed {
-                moved: obs.remote_live && Some(self.remote_placement(node)) != base_placement,
+                moved: obs.remote_live
+                    && Self::exact(
+                        Some(self.remote_placement(node)),
+                        remote.map(|remote| &remote.name),
+                    ) != base_placement,
                 content_changed: match (&entry.kind, obs.remote_content) {
                     (BaseKind::File { content, .. }, Some(remote)) => remote != *content,
                     _ => false,
@@ -923,6 +936,11 @@ impl<'a> Planner<'a> {
                 path: path.clone(),
                 node: owner,
             });
+            // Merged by a case-insensitive match: take the remote name's exact case.
+            let remote_name = self.remote.get(&owner).map(|node| &node.name);
+            if path.name() != remote_name {
+                self.local_steps.push(Step::MoveLocal { node: owner });
+            }
         }
         merges
     }
