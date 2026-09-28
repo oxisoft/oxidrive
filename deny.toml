@@ -1,0 +1,39 @@
+[graph]
+all-features = true
+
+[advisories]
+# Any advisory (vulnerability, unmaintained, unsound, notice) fails the build.
+unmaintained = "all"
+yanked = "deny"
+ignore = []
+
+[licenses]
+# Everything must be compatible with AGPL-3.0-or-later.
+allow = [
+  "AGPL-3.0-or-later",
+  "Apache-2.0",
+  "Apache-2.0 WITH LLVM-exception",
+  "BSD-2-Clause",
+  "BSD-3-Clause",
+  "CC0-1.0",
+  "ISC",
+  "MIT",
+  "MPL-2.0",
+  "Unicode-3.0",
+  "Zlib",
+]
+confidence-threshold = 0.9
+# The allow list is policy (what is compatible), not an inventory of what is used today.
+unused-allowed-license = "allow"
+
+[bans]
+# Duplicate versions fail; an unavoidable one gets a `skip` entry with a reason.
+multiple-versions = "deny"
+wildcards = "deny"
+allow-wildcard-paths = true
+skip = []
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]

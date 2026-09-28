@@ -1,0 +1,13 @@
+[package]
+name = "oxisoft-drive-sim"
+description = "oxidrive deterministic simulator: server and devices in one process, seeded, with fault injection."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+publish = false
+
+[lints]
+workspace = true

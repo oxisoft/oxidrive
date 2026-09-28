@@ -1,0 +1,13 @@
+[package]
+name = "oxisoft-drive-testkit"
+description = "oxidrive test support: test implementations of every trait, generators and invariant checks."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+publish = false
+
+[lints]
+workspace = true
