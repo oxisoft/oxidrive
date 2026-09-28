@@ -156,8 +156,8 @@ digest_id!(
     ContentHash
 );
 digest_id!(
-    /// Hash of a commit's encoded records, signed in its header.
-    RecordsHash
+    /// Hash of one encoded record, listed in its commit's signed header.
+    RecordHash
 );
 digest_id!(
     /// Hash of a signed device certificate, referenced from the device list.
@@ -236,7 +236,7 @@ mod tests {
             format!("{:?}", ContentHash(hash::hash(b""))),
             format!("{:?}", CertificateHash(hash::hash(b""))),
             format!("{:?}", KeysHash(hash::hash(b""))),
-            format!("{:?}", RecordsHash(hash::hash(b""))),
+            format!("{:?}", RecordHash(hash::hash(b""))),
         ] {
             assert!(text.ends_with(')') && text.len() > 64, "{text}");
         }

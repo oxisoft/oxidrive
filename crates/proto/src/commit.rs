@@ -1,8 +1,10 @@
 //! Commits and the hash chain (sync protocol §1–§2, crypto design §8).
 //!
-//! A commit is a signed header plus the encoded records it covers. The header carries a hash
-//! of the records, so the signature stays verifiable after the records are pruned (sync
-//! protocol §7), and each header points at the previous commit's hash.
+//! A commit is a signed header plus the records it covers. The header lists a hash per record,
+//! so a record can be pruned on its own (replaced by its hash) and the signature still
+//! verifies (sync protocol §7). The server prunes only records that are superseded and past
+//! retention, never the current record of a node. Each header points at the previous
+//! commit's hash.
 
 use minicbor::{Decode, Encode};
 use oxisoft_drive_crypto::hash;
@@ -11,7 +13,7 @@ use oxisoft_drive_crypto::sign::{SignContext, SigningKey, VerifyingKey};
 use crate::cbor;
 use crate::signed::{Signable, Signed};
 use crate::{
-    ChainError, CollectionId, CommitHash, DeviceId, NodeRecord, ProtoError, RecordsHash, Seq,
+    ChainError, CollectionId, CommitHash, DeviceId, NodeRecord, ProtoError, RecordHash, Seq,
 };
 
 /// Commit format version written by this code.
@@ -42,9 +44,9 @@ pub struct CommitHeader {
     /// When it was written, milliseconds since the Unix epoch (informational only).
     #[n(6)]
     pub time_ms: u64,
-    /// BLAKE3 of the encoded records.
+    /// BLAKE3 of each encoded record, in order.
     #[n(7)]
-    pub records_hash: RecordsHash,
+    pub record_hashes: Vec<RecordHash>,
 }
 
 impl Signable for CommitHeader {
@@ -66,6 +68,26 @@ pub struct CommitDraft {
     pub time_ms: u64,
 }
 
+/// One record of a commit: its encoded bytes, or only its hash once pruned.
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
+pub enum RecordSlot {
+    /// The encoded record, exactly as hashed.
+    #[n(0)]
+    Present(#[cbor(n(0), with = "minicbor::bytes")] Vec<u8>),
+    /// Pruned; only the hash remains.
+    #[n(1)]
+    Pruned(#[n(0)] RecordHash),
+}
+
+impl RecordSlot {
+    fn hash(&self) -> RecordHash {
+        match self {
+            Self::Present(bytes) => RecordHash(hash::hash(bytes)),
+            Self::Pruned(hash) => *hash,
+        }
+    }
+}
+
 /// A commit as stored and transferred.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 #[cbor(map)]
@@ -73,16 +95,19 @@ pub struct Commit {
     /// The signed header.
     #[n(0)]
     pub header: Signed<CommitHeader>,
-    /// The encoded records, exactly as hashed; `None` once pruned.
-    #[cbor(n(1), with = "minicbor::bytes")]
-    pub records: Option<Vec<u8>>,
+    /// The records, in the order of the header's hashes.
+    #[n(1)]
+    pub records: Vec<RecordSlot>,
 }
 
 impl Commit {
     /// Encodes `records` and signs a header over them with the device's key.
     #[must_use]
     pub fn create(key: &SigningKey, draft: &CommitDraft, records: &[NodeRecord]) -> Self {
-        let encoded = cbor::to_vec(&records);
+        let slots: Vec<RecordSlot> = records
+            .iter()
+            .map(|record| RecordSlot::Present(cbor::to_vec(record)))
+            .collect();
         let header = CommitHeader {
             format: COMMIT_FORMAT,
             collection: draft.collection,
@@ -91,11 +116,11 @@ impl Commit {
             device: DeviceId::from_key(&key.verifying_key()),
             epoch: draft.epoch,
             time_ms: draft.time_ms,
-            records_hash: RecordsHash(hash::hash(&encoded)),
+            record_hashes: slots.iter().map(RecordSlot::hash).collect(),
         };
         Self {
             header: Signed::sign(key, &header),
-            records: Some(encoded),
+            records: slots,
         }
     }
 
@@ -105,22 +130,34 @@ impl Commit {
         CommitHash(self.header.hash())
     }
 
-    /// Decodes the records. Call only on commits that passed [`verify_chain`].
+    /// Decodes the records still present, in order; pruned ones are skipped. Call only on
+    /// commits that passed [`verify_chain`].
     ///
     /// # Errors
     ///
-    /// [`ProtoError::Decode`] for malformed records.
-    pub fn records(&self) -> Result<Option<Vec<NodeRecord>>, ProtoError> {
+    /// [`ProtoError::Decode`] for a malformed record.
+    pub fn records(&self) -> Result<Vec<NodeRecord>, ProtoError> {
         self.records
-            .as_deref()
-            .map(minicbor::decode)
-            .transpose()
-            .map_err(ProtoError::from)
+            .iter()
+            .filter_map(|slot| match slot {
+                RecordSlot::Present(bytes) => {
+                    Some(minicbor::decode(bytes).map_err(ProtoError::from))
+                }
+                RecordSlot::Pruned(_) => None,
+            })
+            .collect()
     }
 
-    /// Drops the records after the retention period; the commit still verifies.
-    pub fn prune(&mut self) {
-        self.records = None;
+    /// Replaces record `index` with its hash; the commit still verifies. Returns whether a
+    /// present record was pruned.
+    pub fn prune(&mut self, index: usize) -> bool {
+        match self.records.get_mut(index) {
+            Some(slot @ RecordSlot::Present(_)) => {
+                *slot = RecordSlot::Pruned(slot.hash());
+                true
+            }
+            _ => false,
+        }
     }
 }
 
@@ -163,9 +200,8 @@ pub fn verify_chain(
         if header.prev != expected_prev {
             return fail(ChainError::Link);
         }
-        if let Some(records) = &commit.records
-            && RecordsHash(hash::hash(records)) != header.records_hash
-        {
+        let hashes: Vec<RecordHash> = commit.records.iter().map(RecordSlot::hash).collect();
+        if hashes != header.record_hashes {
             return fail(ChainError::RecordsHash);
         }
         expected_prev = Some(commit.hash());
@@ -246,15 +282,64 @@ mod tests {
         );
 
         let mut pruned = fixture.commits.clone();
-        pruned[1].prune();
-        assert_eq!(pruned[1].records().unwrap(), None);
+        assert!(pruned[1].prune(0));
+        assert!(!pruned[1].prune(0), "already pruned");
+        assert!(!pruned[1].prune(5), "no such record");
+        assert!(pruned[1].records().unwrap().is_empty());
         assert!(verify_chain(fixture.collection, None, &pruned, keys(&fixture)).is_ok());
-        assert_eq!(pruned[0].records().unwrap().unwrap().len(), 1);
+        assert_eq!(pruned[0].records().unwrap().len(), 1);
 
         let bytes = minicbor::to_vec(&fixture.commits[0]).unwrap();
         assert_eq!(
             minicbor::decode::<Commit>(&bytes).unwrap(),
             fixture.commits[0]
+        );
+    }
+
+    #[test]
+    fn records_are_pruned_one_by_one() {
+        let device = SigningKey::generate(&mut rng(1));
+        let meta = CollectionKey::generate(&mut rng(2), 1).meta();
+        let records: Vec<NodeRecord> = (1..=3)
+            .map(|n| {
+                NodeRecord::seal(
+                    NodeId::from_bytes([n; 16]),
+                    &file_payload("f", &[b"c"]),
+                    &meta,
+                    &mut rng(3),
+                    &context(),
+                )
+                .unwrap()
+            })
+            .collect();
+        let draft = CommitDraft {
+            collection: context().collection,
+            seq: 1,
+            prev: None,
+            epoch: 1,
+            time_ms: 0,
+        };
+        let mut commit = Commit::create(&device, &draft, &records);
+        let key = device.verifying_key();
+        let trusted = |id: &DeviceId| (DeviceId::from_key(&key) == *id).then_some(key);
+        assert!(commit.prune(1));
+        let kept: Vec<NodeId> = commit.records().unwrap().iter().map(|r| r.node).collect();
+        assert_eq!(
+            kept,
+            [NodeId::from_bytes([1; 16]), NodeId::from_bytes([3; 16])]
+        );
+        assert!(verify_chain(draft.collection, None, &[commit.clone()], trusted).is_ok());
+        // A present record that doesn't match its signed hash is rejected.
+        commit.records[0] = RecordSlot::Present(cbor::to_vec(&records[2]));
+        assert_eq!(
+            verify_chain(draft.collection, None, &[commit.clone()], trusted),
+            Err(ProtoError::Chain(ChainError::RecordsHash))
+        );
+        // So is a commit that lost a record entirely.
+        commit.records.truncate(1);
+        assert_eq!(
+            verify_chain(draft.collection, None, &[commit], trusted),
+            Err(ProtoError::Chain(ChainError::RecordsHash))
         );
     }
 
@@ -338,7 +423,7 @@ mod tests {
         );
 
         let broken = Commit {
-            records: Some(vec![0xff]),
+            records: vec![RecordSlot::Present(vec![0xff])],
             ..Commit::create(&fixture.device, &draft, &[])
         };
         assert!(matches!(broken.records(), Err(ProtoError::Decode(_))));

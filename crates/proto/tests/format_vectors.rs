@@ -145,11 +145,11 @@ const FROZEN: [(&str, &str); 9] = [
     ),
     (
         "commit",
-        "4a55f023efc7fca83170902af60c9c555beda00b690029c2b98aaab7660cad65",
+        "b01240f47d89cc996033691013ecaa6187f5c27420353d86b6ba6139d003969f",
     ),
     (
         "commit hash",
-        "e30c83f0d937660e27f07a9c32ad1d2ee4623a96da14d0e6db728f85d36be868",
+        "776f4c6d8fb7dc915d7fcb8fb3ad9b05f4b53476957b3b7c6ab0fd2b1443d44e",
     ),
     (
         "envelope",

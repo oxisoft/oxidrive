@@ -21,7 +21,7 @@ mod node;
 mod pairing;
 mod signed;
 
-pub use commit::{COMMIT_FORMAT, Commit, CommitDraft, CommitHeader, verify_chain};
+pub use commit::{COMMIT_FORMAT, Commit, CommitDraft, CommitHeader, RecordSlot, verify_chain};
 pub use device::{
     DEVICE_FORMAT, DeviceCertificate, DeviceEntry, DeviceList, HeadAttestation, KemKeyPublication,
 };
@@ -29,7 +29,7 @@ pub use envelope::{Envelope, EnvelopeKind};
 pub use error::{ChainError, NameError, ProtoError};
 pub use ids::{
     AccountId, CertificateHash, ChunkId, CollectionId, CommitHash, ContentHash, DeviceId, ID_LEN,
-    KeysHash, LeaseId, NodeId, PairingId, RecordsHash, Seq, Version,
+    KeysHash, LeaseId, NodeId, PairingId, RecordHash, Seq, Version,
 };
 pub use name::{MAX_NAME_LEN, Name};
 pub use node::{ChunkRef, FileInfo, NODE_FORMAT, NodeKind, NodePayload, NodeRecord, RecordContext};
