@@ -31,7 +31,10 @@ unused-allowed-license = "allow"
 multiple-versions = "deny"
 wildcards = "deny"
 allow-wildcard-paths = true
-skip = []
+skip = [
+  { crate = "sha3@0.11.0", reason = "ml-kem 0.3.2 still uses sha3 0.11 while hpke 0.14.1 and x-wing 0.1.0 use 0.12; remove once ml-kem updates (decision C3)" },
+  { crate = "syn@2.0.119", reason = "ecosystem moving from syn 2 to 3: thiserror-impl already uses syn 3, the dalek and zeroize derive macros still use syn 2; build time only, remove once they move" },
+]
 
 [sources]
 unknown-registry = "deny"
