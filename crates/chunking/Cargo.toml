@@ -10,5 +10,17 @@ homepage.workspace = true
 keywords.workspace = true
 categories.workspace = true
 
+[dependencies]
+fastcdc.workspace = true
+oxisoft-drive-crypto.workspace = true
+thiserror.workspace = true
+zeroize.workspace = true
+zstd.workspace = true
+
+[dev-dependencies]
+proptest.workspace = true
+rand_chacha.workspace = true
+rand_core.workspace = true
+
 [lints]
 workspace = true
