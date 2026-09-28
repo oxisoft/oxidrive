@@ -13,6 +13,9 @@ allow = [
   "AGPL-3.0-or-later",
   "Apache-2.0",
   "Apache-2.0 WITH LLVM-exception",
+  # Permissive, OSI-approved (2024); the Blue Oak Council states it combines with AGPLv3.
+  # Used by minicbor. Approved by bkv 2026-09-28.
+  "BlueOak-1.0.0",
   "BSD-2-Clause",
   "BSD-3-Clause",
   "CC0-1.0",

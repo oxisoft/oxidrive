@@ -25,15 +25,18 @@ hpke = { version = "0.14.1", default-features = false, features = [
   "mlkem",
   "x25519",
 ] }
+minicbor = { version = "2.3.0", features = ["alloc", "derive"] }
 proptest = "1.11.0"
 rand_chacha = "0.10.0"
 rand_core = "0.10.1"
 thiserror = "2.0.21"
+unicode-normalization = "0.1.25"
 zeroize = { version = "1.9.0", features = ["derive"] }
 zstd = { version = "0.14.0", default-features = false }
 
 oxisoft-drive-chunking = { version = "0.1.0", path = "crates/chunking" }
 oxisoft-drive-crypto = { version = "0.1.0", path = "crates/crypto" }
+oxisoft-drive-proto = { version = "0.1.0", path = "crates/proto" }
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

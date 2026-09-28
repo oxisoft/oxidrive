@@ -11,6 +11,7 @@
 //!   (X25519 + ML-KEM-768).
 //! - [`keys`]: the key hierarchy, one type per key, so keys can't be mixed up.
 //! - [`recovery`]: the 24-word recovery key.
+//! - [`pairing`]: the out-of-band secret that authenticates device pairing.
 //! - [`suite`]: the suite identifier stored with every encrypted object.
 //!
 //! The crate performs no I/O and never gathers randomness on its own: every function that
@@ -21,6 +22,7 @@ pub mod aead;
 pub mod hash;
 pub mod kem;
 pub mod keys;
+pub mod pairing;
 pub mod recovery;
 pub mod sign;
 pub mod suite;

@@ -170,6 +170,13 @@ secret_type!(
     RecoveryWrapKey
 );
 
+secret_type!(
+    /// Encrypts account-level metadata that every device of the account may read: device
+    /// display names, collection names and configuration.
+    AccountMetaKey
+);
+
+impl aead::AeadKey for AccountMetaKey {}
 impl aead::AeadKey for MetaKey {}
 impl aead::AeadKey for DataKey {}
 impl aead::AeadKey for ThumbKey {}
@@ -252,6 +259,15 @@ impl RecoveryWrapKey {
 }
 
 impl AccountKey {
+    /// The key for account-level metadata (device names, collection configuration).
+    #[must_use]
+    pub fn meta(&self) -> AccountMetaKey {
+        AccountMetaKey(hash::derive_key(
+            context::ACCOUNT_META,
+            self.secret.expose(),
+        ))
+    }
+
     /// Wraps `key` (a collection key, an account private key, or an older account key) for
     /// storage on the server. `aad` must bind the envelope to what it belongs to (IDs,
     /// epochs); the same `aad` is needed to unwrap.
@@ -499,6 +515,22 @@ mod tests {
             sealed::SymmetricKey::secret(&collection.meta()).expose(),
             sealed::SymmetricKey::secret(&collection.meta()).expose()
         );
+    }
+
+    #[test]
+    fn account_meta_key_is_derived_and_encrypts() {
+        let mut rng = rng(7);
+        let account = AccountKey::generate(&mut rng, 0);
+        let sealed = aead::seal(&account.meta(), &mut rng, b"name", b"laptop").unwrap();
+        assert_eq!(
+            &*aead::open(&account.meta(), b"name", &sealed).unwrap(),
+            b"laptop"
+        );
+        assert_ne!(
+            sealed::SymmetricKey::secret(&account.meta()).expose(),
+            account.secret.expose()
+        );
+        assert_eq!(format!("{:?}", account.meta()), "AccountMetaKey(..)");
     }
 
     #[test]

@@ -10,6 +10,7 @@ pub(crate) const COLLECTION_ID: &str = "oxidrive 2026-09-28 collection id key";
 pub(crate) const COLLECTION_CHUNKING: &str = "oxidrive 2026-09-28 collection chunking key";
 pub(crate) const COLLECTION_THUMB: &str = "oxidrive 2026-09-28 collection thumbnail key";
 pub(crate) const RECOVERY_WRAP: &str = "oxidrive 2026-09-28 recovery wrap key";
+pub(crate) const ACCOUNT_META: &str = "oxidrive 2026-09-28 account meta key";
 
 /// Input to the keyed XOF that expands a chunking key into the gear table.
 pub(crate) const GEAR_TABLE: &[u8] = b"oxidrive 2026-09-28 gear table";
@@ -33,13 +34,14 @@ mod tests {
 
     #[test]
     fn contexts_are_distinct_and_contain_no_nul() {
-        let all: [&[u8]; 16] = [
+        let all: [&[u8]; 17] = [
             COLLECTION_META.as_bytes(),
             COLLECTION_DATA.as_bytes(),
             COLLECTION_ID.as_bytes(),
             COLLECTION_CHUNKING.as_bytes(),
             COLLECTION_THUMB.as_bytes(),
             RECOVERY_WRAP.as_bytes(),
+            ACCOUNT_META.as_bytes(),
             GEAR_TABLE,
             SIGN_AUTH_CHALLENGE.as_bytes(),
             SIGN_DEVICE_CERTIFICATE.as_bytes(),

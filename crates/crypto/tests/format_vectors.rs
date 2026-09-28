@@ -7,6 +7,7 @@
 use oxisoft_drive_crypto::hash::{self, KeyedHasher};
 use oxisoft_drive_crypto::kem::{self, WrapContext};
 use oxisoft_drive_crypto::keys::{AccountKey, CollectionKey, DeviceIdentity};
+use oxisoft_drive_crypto::pairing::PairingSecret;
 use oxisoft_drive_crypto::recovery::RecoveryKey;
 use oxisoft_drive_crypto::sign::SignContext;
 use oxisoft_drive_crypto::{CryptoError, aead};
@@ -59,6 +60,9 @@ fn outputs() -> Result<Vec<(&'static str, String)>, CryptoError> {
         .wrap_key()
         .wrap_account_key(&mut rng, b"recovery", &account)?;
     let signature = device.signing_key().sign(SignContext::Commit, b"commit");
+    let sealed_account_meta = aead::seal(&account.meta(), &mut rng, b"aad", b"device name")?;
+    let pairing = PairingSecret::generate(&mut rng);
+    let pairing_mac = pairing.mac(b"approval");
 
     Ok(vec![
         ("sealed meta", fingerprint(&sealed_meta)),
@@ -80,6 +84,8 @@ fn outputs() -> Result<Vec<(&'static str, String)>, CryptoError> {
             fingerprint(&device.kem_public_key().to_bytes()),
         ),
         ("signature", fingerprint(&signature.to_bytes())),
+        ("sealed account meta", fingerprint(&sealed_account_meta)),
+        ("pairing mac", fingerprint(pairing_mac.as_bytes())),
         (
             "recovery words",
             fingerprint(recovery.to_words()?.as_bytes()),
@@ -87,7 +93,7 @@ fn outputs() -> Result<Vec<(&'static str, String)>, CryptoError> {
     ])
 }
 
-const FROZEN: [(&str, &str); 14] = [
+const FROZEN: [(&str, &str); 16] = [
     (
         "sealed meta",
         "10cce71dfec84bad9fab870fd82a67f925abbbc101fd8937c83739f8a9a2915a",
@@ -139,6 +145,14 @@ const FROZEN: [(&str, &str); 14] = [
     (
         "signature",
         "b0ef127dfc79175837a327dc042297b52b8294d7792eb18b8bd086ab14ba4574",
+    ),
+    (
+        "sealed account meta",
+        "c89bdc14bfdd5bf81067023be47ba704a36082395747c58f7c81d28b16202716",
+    ),
+    (
+        "pairing mac",
+        "a2ed279e19b0b45ecffa97af8defb5b134453c4977ab6fdb859c86d11214ff3f",
     ),
     (
         "recovery words",
