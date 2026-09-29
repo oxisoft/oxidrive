@@ -66,6 +66,8 @@ fn stat(content: u64, file_id: u64, mtime: i64) -> Stat {
         mtime_ms: mtime,
         file_id,
         executable: false,
+        // The model's own clock never repeats a time, so it needs no change stamp.
+        change: 0,
     }
 }
 

@@ -54,6 +54,8 @@ struct Inner {
     next_id: u64,
     next_temp: u64,
     clock: i64,
+    /// The last change stamp handed out: every write takes the next.
+    changes: u64,
     failures: Vec<(FsOp, FsError)>,
     operations: usize,
     fail_at: Option<(usize, FsError)>,
@@ -98,6 +100,22 @@ impl MemFs {
         } else {
             path.to_string()
         }
+    }
+
+    /// `path` with every parent folder in the case it has on disk: on a case-insensitive file
+    /// system a new entry lands in the existing folder, whatever case the caller used.
+    fn canonical(&self, inner: &Inner, path: &RelPath) -> RelPath {
+        let (Some(parent), Some(name)) = (path.parent(), path.name()) else {
+            return path.clone();
+        };
+        if !self.rules.case_insensitive || parent.is_root() {
+            return path.clone();
+        }
+        let parent = inner
+            .nodes
+            .get(&self.key(&parent))
+            .map_or_else(|| self.canonical(inner, &parent), |node| node.path.clone());
+        parent.join(name.clone())
     }
 
     fn allowed(&self, path: &RelPath) -> Result<(), FsError> {
@@ -196,6 +214,11 @@ impl MemFs {
         let mut inner = self.lock();
         inner.clock += 1;
         let mtime_ms = inner.clock;
+        // Overwriting keeps the name as it is on disk.
+        let path = inner
+            .nodes
+            .get(&key)
+            .map_or_else(|| self.canonical(&inner, path), |node| node.path.clone());
         let (file_id, executable) =
             if let Some(Data::File { stat, .. }) = inner.nodes.get(&key).map(|node| &node.data) {
                 (stat.file_id, stat.executable)
@@ -203,16 +226,18 @@ impl MemFs {
                 inner.next_id += 1;
                 (inner.next_id, false)
             };
+        inner.changes += 1;
         let stat = Stat {
             size: bytes.len() as u64,
             mtime_ms,
             file_id,
             executable,
+            change: inner.changes,
         };
         inner.nodes.insert(
             key,
             Node {
-                path: path.clone(),
+                path,
                 data: Data::File {
                     bytes: bytes.to_vec(),
                     stat,
@@ -229,10 +254,11 @@ impl MemFs {
             if !inner.nodes.contains_key(&key) {
                 inner.next_id += 1;
                 let file_id = inner.next_id;
+                let path = self.canonical(&inner, &folder);
                 inner.nodes.insert(
                     key,
                     Node {
-                        path: folder,
+                        path,
                         data: Data::Folder { file_id },
                     },
                 );
@@ -252,8 +278,9 @@ impl MemFs {
     pub fn move_entry(&self, from: &RelPath, to: &RelPath) {
         let moved = self.take_subtree(from);
         let mut inner = self.lock();
+        let to = self.canonical(&inner, to);
         for mut node in moved {
-            node.path = carry(&node.path, from, to);
+            node.path = carry(&node.path, from, &to);
             let key = if self.rules.case_insensitive {
                 node.path.fold_case()
             } else {
@@ -263,12 +290,30 @@ impl MemFs {
         }
     }
 
+    /// Sets a file's modification time, as `touch -d` and archive tools do. Its change stamp
+    /// moves on, as a real file system's change time does.
+    pub fn set_mtime(&self, path: &RelPath, mtime_ms: i64) {
+        let key = self.key(path);
+        let mut inner = self.lock();
+        inner.changes += 1;
+        let change = inner.changes;
+        if let Some(Node {
+            data: Data::File { stat, .. },
+            ..
+        }) = inner.nodes.get_mut(&key)
+        {
+            stat.mtime_ms = mtime_ms;
+            stat.change = change;
+        }
+    }
+
     /// Sets a file's executable bit.
     pub fn set_executable(&self, path: &RelPath, executable: bool) {
         let key = self.key(path);
         let mut inner = self.lock();
         inner.clock += 1;
-        let clock = inner.clock;
+        inner.changes += 1;
+        let (clock, change) = (inner.clock, inner.changes);
         if let Some(Node {
             data: Data::File { stat, .. },
             ..
@@ -276,6 +321,7 @@ impl MemFs {
         {
             stat.executable = executable;
             stat.mtime_ms = clock;
+            stat.change = change;
         }
     }
 
@@ -344,7 +390,7 @@ fn carry(path: &RelPath, from: &RelPath, to: &RelPath) -> RelPath {
 }
 
 fn same_version(stat: &Stat, expected: &Stat) -> bool {
-    stat.size == expected.size && stat.mtime_ms == expected.mtime_ms
+    stat.same_version(expected)
 }
 
 impl FileSystem for MemFs {
@@ -485,10 +531,11 @@ impl MemFs {
         }
         inner.next_id += 1;
         let file_id = inner.next_id;
+        let path = self.canonical(&inner, path);
         inner.nodes.insert(
             key,
             Node {
-                path: path.clone(),
+                path,
                 data: Data::Folder { file_id },
             },
         );
@@ -527,8 +574,8 @@ impl MemFs {
                 inner.nodes.remove(&key);
                 Ok(())
             }
-            Some(Data::File { .. }) => Err(FsError::Changed),
-            Some(Data::Folder { .. }) => Err(FsError::Io("not a file".into())),
+            // Another version, or the user put a folder there: changed meanwhile.
+            Some(Data::File { .. } | Data::Folder { .. }) => Err(FsError::Changed),
             None => Err(FsError::NotFound),
         }
     }
@@ -545,7 +592,7 @@ impl MemFs {
                 inner.nodes.remove(&key);
                 Ok(())
             }
-            Some(Data::File { .. }) => Err(FsError::Io("not a folder".into())),
+            Some(Data::File { .. }) => Err(FsError::Changed),
             None => Err(FsError::NotFound),
         }
     }
@@ -590,20 +637,49 @@ impl MemFs {
         }
         let bytes = inner.temps.remove(&temp.0).ok_or(FsError::NotFound)?;
         inner.next_id += 1;
+        inner.changes += 1;
         let stat = Stat {
             size: bytes.len() as u64,
             mtime_ms,
             // Replacing a file by renaming gives it a new file ID, as on real file systems.
             file_id: inner.next_id,
             executable,
+            change: inner.changes,
         };
+        let path = self.canonical(&inner, target);
         inner.nodes.insert(
             key,
             Node {
-                path: target.clone(),
+                path,
                 data: Data::File { bytes, stat },
             },
         );
         Ok(stat)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn path(text: &str) -> RelPath {
+        RelPath::parse(text).unwrap()
+    }
+
+    #[test]
+    fn new_entries_land_in_the_folder_as_it_is_named_on_disk() {
+        let fs = MemFs::new(FsRules {
+            case_insensitive: true,
+            windows_names: false,
+        });
+        fs.mkdir(&path("Dir"));
+        fs.write(&path("dir/new.txt"), b"x");
+        fs.mkdir(&path("DIR/sub"));
+        fs.write(&path("dir/NEW.txt"), b"y");
+        fs.write(&path("other"), b"z");
+        fs.move_entry(&path("other"), &path("dIr/moved"));
+        let paths: Vec<String> = fs.tree().keys().map(ToString::to_string).collect();
+        assert_eq!(paths, ["Dir", "Dir/moved", "Dir/new.txt", "Dir/sub"]);
+        assert_eq!(fs.content(&path("dir/new.txt")).unwrap(), b"y");
     }
 }

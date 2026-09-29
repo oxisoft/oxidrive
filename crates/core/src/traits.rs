@@ -100,14 +100,15 @@ pub trait FileSystem: Send + Sync {
         to: &RelPath,
     ) -> impl Future<Output = Result<(), FsError>> + Send;
 
-    /// Removes a file, only if it still has `expected` size and time.
+    /// Removes a file, only if it still has `expected` size and time. [`FsError::Changed`]
+    /// if it doesn't, or if a folder is there now.
     fn remove_file(
         &self,
         path: &RelPath,
         expected: Stat,
     ) -> impl Future<Output = Result<(), FsError>> + Send;
 
-    /// Removes an empty folder.
+    /// Removes an empty folder. [`FsError::Changed`] if a file is there now.
     fn remove_dir(&self, path: &RelPath) -> impl Future<Output = Result<(), FsError>> + Send;
 
     /// Starts a temporary file (inside `.oxidrive/tmp/`, decision X1).

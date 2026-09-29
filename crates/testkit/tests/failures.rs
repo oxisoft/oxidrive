@@ -133,3 +133,125 @@ fn a_failure_at_every_index_transaction() {
         );
     }
 }
+
+/// A node moved and edited on one device; the other moves it, then fails to download the
+/// edit and crashes. The index must not claim the edit arrived (found by the simulator).
+#[test]
+fn a_crash_between_a_remote_move_and_its_download() {
+    let world = World::new(FsRules::default(), 2);
+    let mut a = world.device(0).unwrap();
+    let mut b = world.device(1).unwrap();
+    a.fs.write(&path("f"), b"first");
+    a.sync().unwrap();
+    b.sync().unwrap();
+    a.fs.move_entry(&path("f"), &path("g"));
+    a.fs.write(&path("g"), b"second");
+    a.sync().unwrap();
+
+    world.server.fail_next(
+        oxisoft_drive_testkit::ServerOp::GetChunk,
+        ServerFailure::Unavailable,
+    );
+    assert!(b.sync().is_err());
+    world.reopen(&mut b).unwrap();
+    b.sync().unwrap();
+    assert_eq!(b.fs.content(&path("g")).unwrap(), b"second");
+}
+
+/// A node moved on one device and edited on the other, whose upload fails after it moved the
+/// node locally. The local edit must still be uploaded after the crash.
+#[test]
+fn a_crash_between_a_remote_move_and_uploading_a_local_edit() {
+    let world = World::new(FsRules::default(), 2);
+    let mut a = world.device(0).unwrap();
+    let mut b = world.device(1).unwrap();
+    a.fs.write(&path("f"), b"first");
+    a.sync().unwrap();
+    b.sync().unwrap();
+    a.fs.move_entry(&path("f"), &path("g"));
+    a.sync().unwrap();
+    b.fs.write(&path("f"), b"edited on b");
+
+    world.server.fail_next(
+        oxisoft_drive_testkit::ServerOp::PutChunk,
+        ServerFailure::Unavailable,
+    );
+    assert!(b.sync().is_err());
+    assert_eq!(b.fs.content(&path("g")).unwrap(), b"edited on b");
+    world.reopen(&mut b).unwrap();
+    b.sync().unwrap();
+    a.sync().unwrap();
+    assert_eq!(a.fs.content(&path("g")).unwrap(), b"edited on b");
+}
+
+/// An index transaction fails while new commits are taken in, and the engine goes on without
+/// a restart. What the failed transaction held must not be forgotten, then or after a later
+/// restart (found by the simulator: files were never downloaded).
+#[test]
+fn a_failed_index_transaction_without_a_restart() {
+    let world = World::new(FsRules::default(), 2);
+    let mut a = world.device(0).unwrap();
+    let mut b = world.device(1).unwrap();
+    a.fs.write(&path("first"), b"1");
+    a.sync().unwrap();
+    b.index.fail_next_applies(1);
+    assert!(b.sync().is_err());
+    a.fs.write(&path("second"), b"2");
+    a.sync().unwrap();
+    b.sync().unwrap();
+    world.reopen(&mut b).unwrap();
+    b.sync().unwrap();
+    a.sync().unwrap();
+    assert_eq!(b.tree(), a.tree());
+    assert_eq!(a.tree().len(), 2);
+}
+
+/// A commit lands but its answer is lost, and the device restarts: its next change must not
+/// reuse the version number of the one that landed, or other devices take the new change
+/// for the one they already have (found by the simulator).
+#[test]
+fn versions_are_never_reused_after_a_lost_answer() {
+    let world = World::new(FsRules::default(), 2);
+    let mut a = world.device(0).unwrap();
+    let mut b = world.device(1).unwrap();
+    a.fs.write(&path("f"), b"first");
+    a.sync().unwrap();
+    b.sync().unwrap();
+    a.fs.write(&path("f"), b"second");
+    world.server.fail_next(
+        oxisoft_drive_testkit::ServerOp::Append,
+        ServerFailure::LostResponse,
+    );
+    assert!(a.sync().is_err());
+    world.reopen(&mut a).unwrap();
+    a.sync().unwrap();
+    b.sync().unwrap();
+    a.fs.write(&path("f"), b"third");
+    a.sync().unwrap();
+    b.sync().unwrap();
+    assert_eq!(b.fs.content(&path("f")).unwrap(), b"third");
+}
+
+/// An edit that keeps a file's size, with its modification time set back to the synced one
+/// (a coarse clock, or a tool setting times), is still an edit: a remote delete must not
+/// remove it (found by the simulator: the edit looked unchanged and was deleted).
+#[test]
+fn an_edit_with_the_same_size_and_time_is_seen() {
+    let world = World::new(FsRules::default(), 2);
+    let mut a = world.device(0).unwrap();
+    let mut b = world.device(1).unwrap();
+    a.fs.write(&path("f"), b"first");
+    a.sync().unwrap();
+    b.sync().unwrap();
+    let synced = b.engine.state().base.values().next().unwrap().clone();
+    let oxisoft_drive_core::BaseKind::File { stat, .. } = synced.kind else {
+        panic!("not a file");
+    };
+    b.fs.write(&path("f"), b"edit!");
+    b.fs.set_mtime(&path("f"), stat.mtime_ms);
+    a.fs.remove(&path("f"));
+    a.sync().unwrap();
+    b.sync().unwrap();
+    a.sync().unwrap();
+    assert_eq!(a.fs.content(&path("f")).unwrap(), b"edit!");
+}

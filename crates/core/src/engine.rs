@@ -22,7 +22,7 @@ use oxisoft_drive_proto::{
 };
 
 use crate::error::EngineError;
-use crate::model::{BaseEntry, BaseKind, RemoteKind, Stat};
+use crate::model::{BaseEntry, BaseKind, LocalEntry, LocalTree, RemoteKind, Stat};
 use crate::path::RelPath;
 use crate::plan::{Conflict, Pause, Plan, Skipped, Step};
 use crate::reconcile::{MassDeleteBrake, Options, reconcile};
@@ -115,6 +115,8 @@ struct Run {
     locations: BTreeMap<NodeId, RelPath>,
     /// Moves performed, in order, for translating paths of new entries.
     moves: Vec<(RelPath, RelPath)>,
+    /// Every file as the scan saw it, by file ID.
+    scanned: BTreeMap<u64, Stat>,
 }
 
 enum StepOutcome {
@@ -217,6 +219,22 @@ where
     /// Any failure of the traits or of verification. The index stays consistent: completed
     /// steps are recorded, the rest is planned again next time.
     pub async fn sync_once(&mut self, allow_mass_delete: bool) -> Result<SyncReport, EngineError> {
+        let result = self.sync_attempts(allow_mass_delete).await;
+        if result.is_err() {
+            // The state in memory may be ahead of the index (a transaction failed after the
+            // state it records was taken in): continue from the index, as after a restart.
+            if let Ok(state) = self.index.load().await {
+                self.remote = RemoteState {
+                    head: state.head,
+                    entries: state.remote.clone(),
+                };
+                self.state = state;
+            }
+        }
+        result
+    }
+
+    async fn sync_attempts(&mut self, allow_mass_delete: bool) -> Result<SyncReport, EngineError> {
         let mut report = SyncReport::default();
         for attempt in 0..MAX_ATTEMPTS {
             report.retries = attempt;
@@ -258,7 +276,7 @@ where
             if plan.paused.is_some() {
                 return Ok(report);
             }
-            if self.execute(&plan, &mut report).await? {
+            if self.execute(&plan, &scanned.local, &mut report).await? {
                 return Ok(report);
             }
         }
@@ -276,10 +294,22 @@ where
     }
 
     /// Executes a plan. Returns `false` if a commit lost a race (plan again).
-    async fn execute(&mut self, plan: &Plan, report: &mut SyncReport) -> Result<bool, EngineError> {
+    async fn execute(
+        &mut self,
+        plan: &Plan,
+        local: &LocalTree,
+        report: &mut SyncReport,
+    ) -> Result<bool, EngineError> {
         let mut run = Run {
             locations: plan.located.clone(),
             moves: Vec::new(),
+            scanned: local
+                .values()
+                .filter_map(|entry| match entry {
+                    LocalEntry::File { stat, .. } => Some((stat.file_id, *stat)),
+                    LocalEntry::Folder { .. } => None,
+                })
+                .collect(),
         };
         let (local, uploads): (Vec<&Step>, Vec<&Step>) = plan.steps.iter().partition(|step| {
             !matches!(
@@ -288,7 +318,10 @@ where
             )
         });
         report.deferred = self.run_local(&local, &mut run).await?;
-        let pending = self.prepare_uploads(&uploads, &mut run).await?;
+        let prepared = self.prepare_uploads(&uploads, &mut run).await?;
+        let prepared_count = prepared.len();
+        let pending = self.keep_consistent(prepared);
+        report.deferred += prepared_count - pending.len();
         self.commit_uploads(pending, report).await
     }
 
@@ -400,7 +433,7 @@ where
             Step::Bind { path, node } => {
                 run.locations.insert(*node, path.clone());
                 Ok(self
-                    .record_local(*node, path)
+                    .record_local(*node, path, run)
                     .await?
                     .map_or(StepOutcome::Skipped, StepOutcome::Done))
             }
@@ -414,13 +447,19 @@ where
                 match self.fs.stat(&path).await? {
                     Some(FsEntry::Folder { .. }) => {}
                     Some(FsEntry::File(_)) => return Ok(StepOutcome::Blocked),
-                    None => {
-                        self.fs.create_dir(&path).await?;
-                    }
+                    None => match self.fs.create_dir(&path).await {
+                        Ok(_) => {}
+                        // The parent moved away or the name was taken meanwhile: the next sync
+                        // resolves it.
+                        Err(FsError::NotFound | FsError::AlreadyExists) => {
+                            return Ok(StepOutcome::Skipped);
+                        }
+                        Err(error) => return Err(error.into()),
+                    },
                 }
                 run.locations.insert(*node, path.clone());
                 Ok(self
-                    .record_local(*node, &path)
+                    .record_local(*node, &path, run)
                     .await?
                     .map_or(StepOutcome::Skipped, StepOutcome::Done))
             }
@@ -449,11 +488,14 @@ where
                     };
                     self.commit_index(txn).await?;
                 }
-                // The node is now where the remote side has it: adopt that version.
-                Ok(self
-                    .record_local(*node, &to)
-                    .await?
-                    .map_or(StepOutcome::Skipped, StepOutcome::Done))
+                // The node is now where the remote side has it.
+                match self.record_move(*node, &to) {
+                    Some(txn) => Ok(StepOutcome::Done(txn)),
+                    None => Ok(self
+                        .record_local(*node, &to, run)
+                        .await?
+                        .map_or(StepOutcome::Skipped, StepOutcome::Done)),
+                }
             }
             Step::Download { node } => self.download(*node, run).await,
             Step::DeleteLocal { node } => {
@@ -483,7 +525,7 @@ where
                     return Ok(StepOutcome::Skipped);
                 };
                 Ok(self
-                    .record_local(*node, &path)
+                    .record_local(*node, &path, run)
                     .await?
                     .map_or(StepOutcome::Skipped, StepOutcome::Done))
             }
@@ -501,19 +543,28 @@ where
     }
 
     /// The index entry saying `node` is synced at `path` with its current remote version.
+    /// A file is recorded only as the scan saw it: if the user changed it since, what is on
+    /// disk isn't known to be the remote content (`None`; the next sync looks again).
     async fn record_local(
         &self,
         node: NodeId,
         path: &RelPath,
+        run: &Run,
     ) -> Result<Option<IndexTxn>, EngineError> {
         let Some(remote) = self.remote_entry(node) else {
             return Ok(None);
         };
         let kind = match (self.fs.stat(path).await?, &remote.node.kind) {
-            (Some(FsEntry::File(stat)), RemoteKind::File { content, .. }) => BaseKind::File {
-                stat,
-                content: *content,
-            },
+            (Some(FsEntry::File(stat)), RemoteKind::File { content, .. }) => {
+                let seen = run.scanned.get(&stat.file_id);
+                if !seen.is_some_and(|seen| seen.same_version(&stat)) {
+                    return Ok(None);
+                }
+                BaseKind::File {
+                    stat,
+                    content: *content,
+                }
+            }
             (Some(FsEntry::Folder { file_id }), RemoteKind::Folder | RemoteKind::Deleted) => {
                 BaseKind::Folder { file_id }
             }
@@ -530,6 +581,35 @@ where
             )],
             ..IndexTxn::default()
         }))
+    }
+
+    /// The index entry for a node moved to where the remote side has it. Only the place is
+    /// adopted: the entry keeps the content and stat known for the local file, and takes the
+    /// remote version only if the remote content is that content. Whatever else differs (a
+    /// remote edit to download, a local edit to upload) stays visible to the next sync if the
+    /// step that handles it fails. `None` for a node without an index entry.
+    fn record_move(&self, node: NodeId, path: &RelPath) -> Option<IndexTxn> {
+        let base = self.state.base.get(&node)?;
+        let remote = self.remote_entry(node)?;
+        let version = match (&base.kind, &remote.node.kind) {
+            (BaseKind::File { content, .. }, RemoteKind::File { content: newer, .. })
+                if content != newer =>
+            {
+                base.version
+            }
+            _ => remote.node.version,
+        };
+        Some(IndexTxn {
+            put: vec![(
+                node,
+                BaseEntry {
+                    path: path.clone(),
+                    kind: base.kind.clone(),
+                    version,
+                },
+            )],
+            ..IndexTxn::default()
+        })
     }
 
     /// Unblocks steps waiting on each other: moves an entry that is itself waiting to move out
@@ -558,9 +638,9 @@ where
                 .filter(|other| *other != node && moving.contains(other));
             if let Some(occupant) = occupant {
                 let temporary = target.with_name(temporary_name("tmp", occupant));
-                let txn = self.relocate(&target, &temporary, run).await?;
-                self.commit_index(txn).await?;
-                return Ok(true);
+                if self.relocate_for_cycle(&target, &temporary, run).await? {
+                    return Ok(true);
+                }
             }
         }
         for node in moving {
@@ -568,13 +648,32 @@ where
                 continue;
             };
             let staged = RelPath::root().join(temporary_name("stage", node));
-            if from != staged && self.fs.stat(&staged).await?.is_none() {
-                let txn = self.relocate(&from, &staged, run).await?;
-                self.commit_index(txn).await?;
+            if from != staged
+                && self.fs.stat(&staged).await?.is_none()
+                && self.relocate_for_cycle(&from, &staged, run).await?
+            {
                 return Ok(true);
             }
         }
         Ok(false)
+    }
+
+    /// A cycle-breaking move; `false` if the user moved things meanwhile (the entry is gone
+    /// or the name taken), which the next sync sees.
+    async fn relocate_for_cycle(
+        &mut self,
+        from: &RelPath,
+        to: &RelPath,
+        run: &mut Run,
+    ) -> Result<bool, EngineError> {
+        match self.relocate(from, to, run).await {
+            Ok(txn) => {
+                self.commit_index(txn).await?;
+                Ok(true)
+            }
+            Err(EngineError::Fs(FsError::NotFound | FsError::AlreadyExists)) => Ok(false),
+            Err(error) => Err(error),
+        }
     }
 
     // ── downloads ──────────────────────────────────────────────────────────────────
@@ -639,19 +738,24 @@ where
             .await
         {
             Ok(stat) => stat,
-            Err(FsError::Changed | FsError::AlreadyExists) => {
-                // Edited or created meanwhile: keep it; the next sync resolves it.
+            Err(FsError::Changed | FsError::AlreadyExists | FsError::NotFound) => {
+                // Edited or created meanwhile, or its folder moved away: keep what is there;
+                // the next sync resolves it.
                 self.fs.discard_temp(temp).await?;
                 return Ok(StepOutcome::Skipped);
             }
             Err(error) => return Err(error.into()),
         };
         run.locations.insert(node, target.clone());
+        // The index takes the remote version, so it records the node where that version has
+        // it. A local move still to upload stays visible (the upload records it), even if
+        // that upload fails or loses a race.
+        let recorded = self.placed_path(node, run).await?.unwrap_or(target);
         Ok(StepOutcome::Done(IndexTxn {
             put: vec![(
                 node,
                 BaseEntry {
-                    path: target,
+                    path: recorded,
                     kind: BaseKind::File {
                         stat,
                         content: *content,
@@ -754,6 +858,90 @@ where
             });
         }
         Ok(pending)
+    }
+
+    /// Drops records that would leave the remote tree broken because the folder changed
+    /// while the plan ran (a move whose source vanished while a new entry takes its old
+    /// place, a folder moved away before its new children were read): two live entries at
+    /// one place, a live entry in a missing or deleted folder, or a folder inside itself.
+    /// Other devices would have to repair or pause on such a tree. What is dropped is still
+    /// on disk and planned again next time.
+    fn keep_consistent(&self, mut pending: Vec<Pending>) -> Vec<Pending> {
+        let case_insensitive = self.fs.rules().case_insensitive;
+        let key = |name: &Name| {
+            if case_insensitive {
+                name.fold_case()
+            } else {
+                name.as_str().to_owned()
+            }
+        };
+        loop {
+            // The tree after the commit: node → (parent, name, live).
+            let mut tree: BTreeMap<NodeId, (Option<NodeId>, &Name, bool)> = self
+                .remote
+                .entries
+                .iter()
+                .map(|(node, entry)| {
+                    let live = !matches!(entry.node.kind, RemoteKind::Deleted);
+                    (*node, (entry.node.parent, &entry.node.name, live))
+                })
+                .collect();
+            // Records that put a node somewhere it isn't yet (new, moved or restored).
+            let mut placing = BTreeSet::new();
+            for item in &pending {
+                let live = !matches!(item.payload.kind, NodeKind::Deleted);
+                let placement = (item.payload.parent, &item.payload.name, live);
+                if live && tree.get(&item.node) != Some(&placement) {
+                    placing.insert(item.node);
+                }
+                tree.insert(item.node, placement);
+            }
+            let changed: BTreeSet<NodeId> = pending.iter().map(|item| item.node).collect();
+            let mut dropped = BTreeSet::new();
+
+            let mut places: BTreeMap<(Option<NodeId>, String), Vec<NodeId>> = BTreeMap::new();
+            for (node, (parent, name, live)) in &tree {
+                if *live {
+                    places.entry((*parent, key(name))).or_default().push(*node);
+                }
+            }
+            for members in places.values().filter(|members| members.len() > 1) {
+                dropped.extend(members.iter().filter(|node| placing.contains(*node)));
+            }
+            for (node, (parent, _, live)) in &tree {
+                let Some(parent) = parent.filter(|_| *live) else {
+                    continue;
+                };
+                match tree.get(&parent) {
+                    Some((_, _, true)) => {}
+                    Some((_, _, false)) if changed.contains(&parent) => {
+                        dropped.insert(parent);
+                    }
+                    _ if changed.contains(node) => {
+                        dropped.insert(*node);
+                    }
+                    _ => {}
+                }
+            }
+            for &node in &placing {
+                let mut seen = BTreeSet::new();
+                let mut current = tree.get(&node).and_then(|(parent, _, _)| *parent);
+                while let Some(ancestor) = current {
+                    if ancestor == node {
+                        dropped.insert(node);
+                        break;
+                    }
+                    if !seen.insert(ancestor) {
+                        break;
+                    }
+                    current = tree.get(&ancestor).and_then(|(parent, _, _)| *parent);
+                }
+            }
+            if dropped.is_empty() {
+                return pending;
+            }
+            pending.retain(|item| !dropped.contains(&item.node));
+        }
     }
 
     /// The tombstone record for a node deleted locally.
@@ -918,6 +1106,13 @@ where
                 seq,
                 hash: commit.hash(),
             };
+            // Once the commit may land, its versions are taken for good: record the counter
+            // first, so a lost answer followed by a restart can't hand them out again.
+            self.commit_index(IndexTxn {
+                counter: Some(self.state.counter),
+                ..IndexTxn::default()
+            })
+            .await?;
             match self
                 .server
                 .append(self.config.collection, head, commit)
@@ -931,6 +1126,7 @@ where
                 counter: Some(self.state.counter),
                 ..IndexTxn::default()
             };
+            txn.put = self.carried_descendants(batch);
             for item in batch {
                 let entry = RemoteEntry::from_payload(&item.payload, epoch);
                 self.remote.apply(item.node, entry.clone());
@@ -946,6 +1142,44 @@ where
             rest = remaining;
         }
         Ok(true)
+    }
+
+    /// Index entries of everything inside folders whose move a batch commits, at their new
+    /// paths, as a local move keeps them (see `relocate`). A stale path would hide an entry
+    /// found only by its path (one whose file ID changed) and make its parent look new. The
+    /// batch's own entries come after these and win.
+    fn carried_descendants(&self, batch: &[Pending]) -> Vec<(NodeId, BaseEntry)> {
+        let moves: Vec<(RelPath, RelPath)> = batch
+            .iter()
+            .filter_map(|item| {
+                let now = item.base.as_ref()?;
+                let before = self.state.base.get(&item.node)?;
+                (matches!(before.kind, BaseKind::Folder { .. }) && before.path != now.path)
+                    .then(|| (before.path.clone(), now.path.clone()))
+            })
+            .collect();
+        if moves.is_empty() {
+            return Vec::new();
+        }
+        self.state
+            .base
+            .iter()
+            .filter_map(|(node, entry)| {
+                // The deepest moved folder holding it: its new path already includes the moves
+                // of folders further up.
+                let deepest = moves
+                    .iter()
+                    .filter(|(from, _)| entry.path != *from && entry.path.starts_with(from))
+                    .max_by_key(|(from, _)| from.components().len())?;
+                Some((
+                    *node,
+                    BaseEntry {
+                        path: carry(&entry.path, std::slice::from_ref(deepest)),
+                        ..entry.clone()
+                    },
+                ))
+            })
+            .collect()
     }
 }
 

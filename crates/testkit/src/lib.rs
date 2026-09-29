@@ -25,7 +25,7 @@ use std::thread::{self, Thread};
 pub use clock::ManualClock;
 pub use fs::{FsOp, MemFs, UserAction};
 pub use index::MemIndex;
-pub use server::{MemServer, ServerFailure, ServerOp};
+pub use server::{Hook, MemServer, ServerFailure, ServerOp};
 pub use world::{Device, DeviceEngine, Tree, World, contents};
 
 /// Runs `future` to completion on the current thread. In-memory implementations complete

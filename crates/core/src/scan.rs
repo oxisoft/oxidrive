@@ -89,9 +89,9 @@ pub async fn scan<F: FileSystem>(fs: &F, base: &Base, id_key: &IdKey) -> Result<
                     pending.push(path);
                 }
                 FsEntry::File(stat) => {
-                    let unchanged = synced.get(&path).is_some_and(|synced| {
-                        synced.size == stat.size && synced.mtime_ms == stat.mtime_ms
-                    });
+                    let unchanged = synced
+                        .get(&path)
+                        .is_some_and(|synced| synced.same_version(&stat));
                     let content = if unchanged {
                         None
                     } else {

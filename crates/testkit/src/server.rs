@@ -42,6 +42,18 @@ struct Collection {
     chunks: BTreeMap<[u8; 32], Vec<u8>>,
 }
 
+/// Something that happens elsewhere at an exact moment of a device's conversation with the
+/// server, such as another device syncing.
+pub type Hook = Box<dyn FnOnce() + Send>;
+
+struct PendingHook(Hook);
+
+impl std::fmt::Debug for PendingHook {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("PendingHook")
+    }
+}
+
 #[derive(Debug, Default)]
 struct Inner {
     collections: BTreeMap<CollectionId, Collection>,
@@ -49,6 +61,7 @@ struct Inner {
     failures: Vec<(ServerOp, ServerFailure)>,
     operations: usize,
     fail_at: Option<(usize, ServerFailure)>,
+    hook_at: Option<(usize, PendingHook)>,
 }
 
 /// An in-memory server, shared by several devices through `Arc` (core executor §5).
@@ -80,10 +93,20 @@ impl MemServer {
         inner.fail_at = Some((at, failure));
     }
 
-    /// Cancels every injected failure that hasn't fired.
+    /// Runs `hook` right before the operation `count` operations from now: another device
+    /// syncing, or a user editing, at an exact point of this device's sync. The hook may use
+    /// the server itself.
+    pub fn interleave_after(&self, count: usize, hook: Hook) {
+        let mut inner = self.lock();
+        let at = inner.operations + count;
+        inner.hook_at = Some((at, PendingHook(hook)));
+    }
+
+    /// Cancels every injected failure and hook that hasn't fired.
     pub fn cancel_failures(&self) {
         let mut inner = self.lock();
         inner.fail_at = None;
+        inner.hook_at = None;
         inner.failures.clear();
     }
 
@@ -94,6 +117,18 @@ impl MemServer {
     }
 
     fn failure(&self, op: ServerOp) -> Option<ServerFailure> {
+        let hook = {
+            let mut inner = self.lock();
+            let due = inner
+                .hook_at
+                .as_ref()
+                .is_some_and(|(at, _)| *at == inner.operations);
+            if due { inner.hook_at.take() } else { None }
+        };
+        // Outside the lock: the hook may call the server.
+        if let Some((_, PendingHook(hook))) = hook {
+            hook();
+        }
         let mut inner = self.lock();
         inner.operations += 1;
         if inner

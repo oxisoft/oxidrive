@@ -1,6 +1,6 @@
 [package]
 name = "oxisoft-drive-sim"
-description = "oxidrive deterministic simulator: server and devices in one process, seeded, with fault injection."
+description = "oxidrive deterministic simulator: several devices, long random timelines, injected failures, invariant checks."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -8,6 +8,17 @@ license.workspace = true
 repository.workspace = true
 homepage.workspace = true
 publish = false
+
+[[bin]]
+name = "oxidrive-sim"
+path = "src/main.rs"
+
+[dependencies]
+oxisoft-drive-core.workspace = true
+oxisoft-drive-proto.workspace = true
+oxisoft-drive-testkit = { path = "../testkit" }
+rand_chacha.workspace = true
+rand_core.workspace = true
 
 [lints]
 workspace = true

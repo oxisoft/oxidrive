@@ -23,6 +23,21 @@ pub fn windows_allows(name: &Name) -> bool {
     !reserved
 }
 
+/// Whether a name is one the engine gives an entry it moves out of the way for a moment:
+/// exactly `.oxidrive-tmp-` or `.oxidrive-stage-` and a node ID in 32 hex digits. Such a
+/// place is never uploaded. Anything else (a conflict copy of such a name, say) is an
+/// ordinary name.
+pub(crate) fn is_temporary(name: &Name) -> bool {
+    [".oxidrive-tmp-", ".oxidrive-stage-"].iter().any(|prefix| {
+        name.as_str().strip_prefix(prefix).is_some_and(|id| {
+            id.len() == 32
+                && id
+                    .bytes()
+                    .all(|byte| matches!(byte, b'0'..=b'9' | b'a'..=b'f'))
+        })
+    })
+}
+
 /// The conflict name for `original`: `stem (tag).ext`, or `stem (tag n).ext` for the n-th
 /// attempt (n ≥ 2). The stem is shortened on a character boundary if the result would exceed
 /// the name length limit.
@@ -55,6 +70,23 @@ pub fn conflict_name(original: &Name, tag: &str, attempt: u32) -> Name {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn temporary_names_have_an_exact_shape() {
+        let name = |text: &str| Name::new(text).unwrap();
+        let id = "0123456789abcdef0123456789abcdef";
+        assert!(is_temporary(&name(&format!(".oxidrive-tmp-{id}"))));
+        assert!(is_temporary(&name(&format!(".oxidrive-stage-{id}"))));
+        assert!(!is_temporary(&name(&format!(
+            ".oxidrive-tmp-{id} (conflict d2)"
+        ))));
+        assert!(!is_temporary(&name(".oxidrive-tmp-0123")));
+        assert!(!is_temporary(&name(&format!(
+            ".oxidrive-tmp-{}",
+            id.to_uppercase()
+        ))));
+        assert!(!is_temporary(&name("notes.txt")));
+    }
 
     fn name(text: &str) -> Name {
         Name::new(text).unwrap()

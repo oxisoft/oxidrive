@@ -22,7 +22,7 @@ use oxisoft_drive_proto::{ContentHash, Name, NodeId};
 use crate::model::{
     Base, BaseEntry, BaseKind, LocalEntry, LocalTree, RemoteKind, RemoteTree, remote_paths,
 };
-use crate::names::{conflict_name, windows_allows};
+use crate::names::{conflict_name, is_temporary, windows_allows};
 use crate::path::RelPath;
 use crate::plan::{Conflict, Pause, Plan, SkipReason, Skipped, Step};
 
@@ -580,10 +580,17 @@ impl<'a> Planner<'a> {
     fn observe(&self, node: NodeId, entry: &BaseEntry) -> Obs {
         let base_placement = Self::exact(self.base_placement(entry), entry.path.name());
         let mut obs = Obs::default();
+        // A node the executor moved out of the way (and crashed or failed before recording
+        // it) isn't moved by the user: it goes back to its remote place.
+        let temporary = self
+            .local_path
+            .get(&node)
+            .and_then(RelPath::name)
+            .is_some_and(is_temporary);
         if let Some(path) = self.local_path.get(&node) {
             obs.local = Some(path.clone());
-            obs.local_moved =
-                Self::exact(self.placement_of_path(path), path.name()) != base_placement;
+            obs.local_moved = !temporary
+                && Self::exact(self.placement_of_path(path), path.name()) != base_placement;
             if let (
                 BaseKind::File { stat, content },
                 Some(LocalEntry::File {
@@ -592,7 +599,7 @@ impl<'a> Planner<'a> {
                 }),
             ) = (&entry.kind, self.local.get(path))
             {
-                let same_stat = now.size == stat.size && now.mtime_ms == stat.mtime_ms;
+                let same_stat = now.same_version(stat);
                 if !same_stat && *hash != Some(*content) {
                     obs.local_change = ContentChange::Changed(*hash);
                 }
@@ -604,15 +611,21 @@ impl<'a> Planner<'a> {
             Some(RemoteKind::File { content, .. }) if obs.remote_live => Some(*content),
             _ => None,
         };
-        let changed = remote
-            .is_none_or(|remote| remote.version != entry.version || self.resurrect.contains(&node));
+        let moved = obs.remote_live
+            && (temporary
+                || Self::exact(
+                    Some(self.remote_placement(node)),
+                    remote.map(|remote| &remote.name),
+                ) != base_placement);
+        // A place differing at the same version is a local step that didn't finish (a move
+        // out of the way, a crash between steps): the remote place wins, as for a move.
+        let changed = moved
+            || remote.is_none_or(|remote| {
+                remote.version != entry.version || self.resurrect.contains(&node)
+            });
         if changed {
             obs.remote_change = RemoteChange::Changed {
-                moved: obs.remote_live
-                    && Self::exact(
-                        Some(self.remote_placement(node)),
-                        remote.map(|remote| &remote.name),
-                    ) != base_placement,
+                moved,
                 content_changed: match (&entry.kind, obs.remote_content) {
                     (BaseKind::File { content, .. }, Some(remote)) => remote != *content,
                     _ => false,
@@ -947,9 +960,21 @@ impl<'a> Planner<'a> {
 
     /// Renames `path` in place to a free conflict name; returns the new path.
     fn set_aside(&mut self, path: &RelPath) -> RelPath {
-        let Some(original) = path.name().cloned() else {
+        let Some(mut original) = path.name().cloned() else {
             return path.clone();
         };
+        // A node caught at an engine temporary name is named after its real (remote) name:
+        // the temporary one is plumbing, never shown to anyone.
+        if is_temporary(&original)
+            && let Some(real) = self
+                .local_owner
+                .get(path)
+                .and_then(|node| self.remote.get(node))
+                .map(|node| &node.name)
+                .filter(|name| !is_temporary(name))
+        {
+            original = real.clone();
+        }
         let parent = self.local_parent(path);
         let mut attempt = 1;
         let (name, aside) = loop {
@@ -1207,6 +1232,7 @@ mod tests {
             mtime_ms: i64::from(n),
             file_id,
             executable: false,
+            change: u64::from(n),
         }
     }
 
@@ -1396,6 +1422,28 @@ mod tests {
         );
     }
 
+    /// Both edited while this device had the node at an engine temporary name (recorded in
+    /// the index by a cycle-breaking move): the conflict copy takes the real name (found by
+    /// the simulator: a copy named `.oxidrive-tmp-… (conflict …)` was uploaded).
+    #[test]
+    fn a_conflict_copy_never_takes_a_temporary_name() {
+        let temporary = ".oxidrive-tmp-0123456789abcdef0123456789abcdef";
+        let setup = Setup {
+            base: [(id(1), base_file(temporary, 1, 100, 1))].into(),
+            local: [(path(temporary), local_file(2, 100))].into(),
+            remote: [(id(1), remote_file(None, "f", 3, 2))].into(),
+        };
+        let plan = plan_of(&setup);
+        assert!(plan.steps.contains(&Step::SetAside {
+            from: path(temporary),
+            to: name("f (conflict T)")
+        }));
+        assert!(plan.steps.contains(&Step::UploadNew {
+            path: path("f (conflict T)"),
+            folder: false
+        }));
+    }
+
     #[test]
     fn same_edit_on_both_sides_is_no_conflict() {
         let mut setup = synced_file();
@@ -1572,6 +1620,35 @@ mod tests {
         assert!(plan.steps.contains(&Step::MoveLocal { node: id(1) }));
         assert!(plan.steps.contains(&Step::MoveLocal { node: id(2) }));
         assert_eq!(plan.steps.len(), 2);
+    }
+
+    /// An index entry at the remote version but elsewhere (a local step that didn't finish)
+    /// is moved to the remote place, not taken as in step (found by the simulator).
+    #[test]
+    fn a_place_differing_at_the_same_version_is_moved() {
+        let setup = Setup {
+            base: [(id(1), base_file(".oxidrive-tmp-01", 1, 10, 1))].into(),
+            local: [(path(".oxidrive-tmp-01"), local_file(1, 10))].into(),
+            remote: [(id(1), remote_file(None, "f", 1, 1))].into(),
+        };
+        assert_eq!(plan_of(&setup).steps, [Step::MoveLocal { node: id(1) }]);
+    }
+
+    /// A node found at an engine temporary name whose move the index never recorded (a crash
+    /// in between) goes back to its place; the temporary name is never uploaded (found by
+    /// the simulator).
+    #[test]
+    fn a_temporary_name_is_never_uploaded() {
+        let setup = Setup {
+            base: [(id(1), base_file("f", 1, 10, 1))].into(),
+            local: [(
+                path(".oxidrive-stage-0123456789abcdef0123456789abcdef"),
+                local_file(1, 10),
+            )]
+            .into(),
+            remote: [(id(1), remote_file(None, "f", 1, 1))].into(),
+        };
+        assert_eq!(plan_of(&setup).steps, [Step::MoveLocal { node: id(1) }]);
     }
 
     #[test]

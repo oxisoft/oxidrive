@@ -7,6 +7,7 @@
 //! | `ci`   | every check, including the coverage gate (Linux CI job) |
 //! | `test` | lints and tests only (macOS and Windows CI jobs) |
 //! | `deny` | the dependency advisory, licence and source check (daily CI job) |
+//! | `sim`  | the deterministic simulator, optimised: `--seed N` replays a run, `--runs K [--from S]` searches (options as `oxidrive-sim`) |
 
 mod coverage;
 
@@ -18,7 +19,7 @@ use std::io;
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode};
 
-const USAGE: &str = "usage: cargo xtask <ci | test | deny>";
+const USAGE: &str = "usage: cargo xtask <ci | test | deny | sim [options]>";
 const COVERAGE_JSON: &str = "target/llvm-cov/summary.json";
 
 fn main() -> ExitCode {
@@ -28,6 +29,7 @@ fn main() -> ExitCode {
         Some("ci") => ci(&root),
         Some("test") => test(&root),
         Some("deny") => deny(&root),
+        Some("sim") => sim(&root, &env::args().skip(2).collect::<Vec<_>>()),
         _ => Err(Error::Usage),
     };
     match result {
@@ -94,6 +96,22 @@ fn test(root: &Path) -> Result<(), Error> {
 
 fn deny(root: &Path) -> Result<(), Error> {
     cargo(root, "deny", &["deny", "--all-features", "check"], &[])
+}
+
+/// Runs the simulator binary, optimised, with the given options.
+fn sim(root: &Path, options: &[String]) -> Result<(), Error> {
+    let mut args = vec![
+        "run",
+        "--release",
+        "--locked",
+        "--package",
+        "oxisoft-drive-sim",
+        "--bin",
+        "oxidrive-sim",
+        "--",
+    ];
+    args.extend(options.iter().map(String::as_str));
+    cargo(root, "sim", &args, &[])
 }
 
 fn clippy(root: &Path) -> Result<(), Error> {

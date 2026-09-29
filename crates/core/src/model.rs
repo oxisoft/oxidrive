@@ -17,6 +17,20 @@ pub struct Stat {
     pub file_id: u64,
     /// The Unix executable bit.
     pub executable: bool,
+    /// Change time (ctime on Unix and macOS, `ChangeTime` on Windows) as an opaque stamp.
+    /// Every write changes it and no tool can set it, so an edit that keeps size and
+    /// modification time (coarse clocks, tools setting times) is still seen. 0 where a file
+    /// system has none.
+    pub change: u64,
+}
+
+impl Stat {
+    /// Whether two stats show the same version of a file's content (the executable bit and
+    /// the file ID aside).
+    #[must_use]
+    pub const fn same_version(&self, other: &Self) -> bool {
+        self.size == other.size && self.mtime_ms == other.mtime_ms && self.change == other.change
+    }
 }
 
 /// One entry found by scanning the local folder.
