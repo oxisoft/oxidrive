@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO envelopes (account, kind, epoch, device, collection, encoded)\n             VALUES (?, ?, ?, ?, ?, ?)\n             ON CONFLICT (account, kind, epoch, device, collection)\n             DO UPDATE SET encoded = excluded.encoded",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 6
+    },
+    "nullable": []
+  },
+  "hash": "b263b068e9c9ed761d7d787090c76b8c58df6602ca4ba732cc2aa580454213b7"
+}

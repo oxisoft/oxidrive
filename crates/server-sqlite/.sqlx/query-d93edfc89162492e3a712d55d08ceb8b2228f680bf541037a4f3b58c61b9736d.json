@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "DELETE FROM challenges WHERE expires_ms <= ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": []
+  },
+  "hash": "d93edfc89162492e3a712d55d08ceb8b2228f680bf541037a4f3b58c61b9736d"
+}

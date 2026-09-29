@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO attestations (collection, device, signed) VALUES ($1, $2, $3)\n             ON CONFLICT (collection, device) DO UPDATE SET signed = excluded.signed",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Bytea",
+        "Bytea",
+        "Bytea"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "1dafa7cef50c507e99d5353ebdaf5393814ece95f4c0cd0ced8c14fd22575216"
+}

@@ -1,0 +1,21 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT COALESCE(SUM(size), 0) AS \"used!: i64\" FROM chunks WHERE collection = ?",
+  "describe": {
+    "columns": [
+      {
+        "name": "used!: i64",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "c77af85ecfccf34854af1c01034b2792e588df0fbe1a15eb6fbd5889d1756b51"
+}

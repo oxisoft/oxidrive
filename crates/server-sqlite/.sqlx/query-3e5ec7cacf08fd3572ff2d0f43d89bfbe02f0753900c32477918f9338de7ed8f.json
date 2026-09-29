@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE collections SET retention_days = COALESCE(?, retention_days),\n                                    config = COALESCE(?, config)\n             WHERE id = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": []
+  },
+  "hash": "3e5ec7cacf08fd3572ff2d0f43d89bfbe02f0753900c32477918f9338de7ed8f"
+}

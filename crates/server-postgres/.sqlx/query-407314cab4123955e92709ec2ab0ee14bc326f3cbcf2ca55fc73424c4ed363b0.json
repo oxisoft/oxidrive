@@ -1,10 +1,21 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT account, config, retention_days, created_ms FROM collections WHERE id = $1",
+  "query": "SELECT id, account, config, retention_days, created_ms, deleted_ms FROM collections\n             WHERE account = $1 AND deleted_ms IS NULL ORDER BY id",
   "describe": {
     "columns": [
       {
         "ordinal": 0,
+        "name": "id",
+        "type_info": "Bytea",
+        "origin": {
+          "Table": {
+            "table": "collections",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
         "name": "account",
         "type_info": "Bytea",
         "origin": {
@@ -15,7 +26,7 @@
         }
       },
       {
-        "ordinal": 1,
+        "ordinal": 2,
         "name": "config",
         "type_info": "Bytea",
         "origin": {
@@ -26,7 +37,7 @@
         }
       },
       {
-        "ordinal": 2,
+        "ordinal": 3,
         "name": "retention_days",
         "type_info": "Int8",
         "origin": {
@@ -37,13 +48,24 @@
         }
       },
       {
-        "ordinal": 3,
+        "ordinal": 4,
         "name": "created_ms",
         "type_info": "Int8",
         "origin": {
           "Table": {
             "table": "collections",
             "name": "created_ms"
+          }
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "deleted_ms",
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "collections",
+            "name": "deleted_ms"
           }
         }
       }
@@ -57,8 +79,10 @@
       false,
       false,
       false,
-      false
+      false,
+      false,
+      true
     ]
   },
-  "hash": "19d42f23837a9d6309dbfdee07c406bcbee85394a4edf6c8511696849ebb51c7"
+  "hash": "407314cab4123955e92709ec2ab0ee14bc326f3cbcf2ca55fc73424c4ed363b0"
 }

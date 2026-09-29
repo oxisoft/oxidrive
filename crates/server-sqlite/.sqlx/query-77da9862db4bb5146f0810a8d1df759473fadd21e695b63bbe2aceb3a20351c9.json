@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT id FROM collections\n             WHERE deleted_ms IS NOT NULL AND purged = 0\n               AND deleted_ms + retention_days * 86400000 <= ?\n             ORDER BY id",
+  "describe": {
+    "columns": [
+      {
+        "name": "id",
+        "ordinal": 0,
+        "type_info": "Blob",
+        "origin": {
+          "Table": {
+            "table": "collections",
+            "name": "id"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "77da9862db4bb5146f0810a8d1df759473fadd21e695b63bbe2aceb3a20351c9"
+}

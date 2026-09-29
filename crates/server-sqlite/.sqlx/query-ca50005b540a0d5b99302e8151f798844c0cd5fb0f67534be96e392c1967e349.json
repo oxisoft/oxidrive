@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO accounts (id, signing_key, kem_key, status, quota_bytes, used_bytes,\n                               created_ms)\n         VALUES (?, ?, ?, 'active', ?, 0, ?)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 5
+    },
+    "nullable": []
+  },
+  "hash": "ca50005b540a0d5b99302e8151f798844c0cd5fb0f67534be96e392c1967e349"
+}

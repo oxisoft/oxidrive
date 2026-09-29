@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT signing_key, status, quota_bytes, used_bytes, created_ms FROM accounts\n             WHERE id = $1",
+  "query": "SELECT signing_key, kem_key, status, quota_bytes, used_bytes, created_ms\n             FROM accounts WHERE id = $1",
   "describe": {
     "columns": [
       {
@@ -16,6 +16,17 @@
       },
       {
         "ordinal": 1,
+        "name": "kem_key",
+        "type_info": "Bytea",
+        "origin": {
+          "Table": {
+            "table": "accounts",
+            "name": "kem_key"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
         "name": "status",
         "type_info": "Text",
         "origin": {
@@ -26,7 +37,7 @@
         }
       },
       {
-        "ordinal": 2,
+        "ordinal": 3,
         "name": "quota_bytes",
         "type_info": "Int8",
         "origin": {
@@ -37,7 +48,7 @@
         }
       },
       {
-        "ordinal": 3,
+        "ordinal": 4,
         "name": "used_bytes",
         "type_info": "Int8",
         "origin": {
@@ -48,7 +59,7 @@
         }
       },
       {
-        "ordinal": 4,
+        "ordinal": 5,
         "name": "created_ms",
         "type_info": "Int8",
         "origin": {
@@ -69,8 +80,9 @@
       false,
       false,
       false,
+      false,
       false
     ]
   },
-  "hash": "109df9550c5fc0b5c7fb6d00ce6236b2fa55ce1a9a350ebc0745d03ec396e241"
+  "hash": "663c90c7958a3aa92b4d8218e4fe1c08302f80d6d923e17d3e0861b5841d66b0"
 }

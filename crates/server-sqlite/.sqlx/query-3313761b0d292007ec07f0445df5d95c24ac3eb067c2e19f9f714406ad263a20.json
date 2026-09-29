@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "DELETE FROM envelopes WHERE collection = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": []
+  },
+  "hash": "3313761b0d292007ec07f0445df5d95c24ac3eb067c2e19f9f714406ad263a20"
+}

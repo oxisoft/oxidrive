@@ -14,12 +14,13 @@ use std::future::Future;
 
 pub use types::{
     AccountRow, AccountStatus, AppendOutcome, ChunkRow, CollectionRow, LeaseRow, NewAccount,
-    NewChunk, NewCollection, NewLease, PreparedAppend, PreparedRecord, RecordRef,
-    StoredCertificate, StoredCommit, StoredDeviceList, StoredSlot,
+    NewChunk, NewCollection, NewLease, PairingRow, PreparedAppend, PreparedRecord, RecordRef,
+    SessionRow, StoredAttestation, StoredCertificate, StoredCommit, StoredDeviceList,
+    StoredEnvelope, StoredSlot,
 };
 
 use oxisoft_drive_proto::api::Head;
-use oxisoft_drive_proto::{AccountId, ChunkId, CollectionId, DeviceId, LeaseId, Seq};
+use oxisoft_drive_proto::{AccountId, ChunkId, CollectionId, DeviceId, LeaseId, PairingId, Seq};
 
 /// Store failures.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -55,7 +56,8 @@ pub trait MetaStore: Send + Sync {
         id: AccountId,
     ) -> impl Future<Output = Result<Option<AccountRow>, StoreError>> + Send;
 
-    /// Replaces an account's device list and adds certificates, if the stored list still has
+    /// Replaces an account's device list, adds certificates and envelopes (for the new
+    /// devices), and ends the sessions of `revoked` devices, if the stored list still has
     /// version `expected` (`None`: no list yet). [`StoreError::Conflict`] otherwise.
     fn put_device_list(
         &self,
@@ -63,7 +65,177 @@ pub trait MetaStore: Send + Sync {
         expected: Option<u64>,
         list: &StoredDeviceList,
         certificates: &[StoredCertificate],
+        envelopes: &[StoredEnvelope],
+        revoked: &[DeviceId],
     ) -> impl Future<Output = Result<(), StoreError>> + Send;
+
+    /// Every certificate of an account, in device order.
+    fn certificates(
+        &self,
+        account: AccountId,
+    ) -> impl Future<Output = Result<Vec<StoredCertificate>, StoreError>> + Send;
+
+    /// The account a device's certificate belongs to.
+    fn account_of_device(
+        &self,
+        device: DeviceId,
+    ) -> impl Future<Output = Result<Option<AccountId>, StoreError>> + Send;
+
+    // ── invites, sign-in ──────────────────────────────────────────────────────────
+
+    /// Records a one-time invite by the hash of its code.
+    fn create_invite(
+        &self,
+        hash: [u8; 32],
+        expires_ms: u64,
+    ) -> impl Future<Output = Result<(), StoreError>> + Send;
+
+    /// Uses up an invite and creates the account with its first device list, certificate
+    /// and envelopes, in one transaction. [`StoreError::NotFound`] if the invite is unknown,
+    /// used or expired at `now_ms`; [`StoreError::Duplicate`] if the account exists.
+    fn create_account_by_invite(
+        &self,
+        invite: [u8; 32],
+        now_ms: u64,
+        account: &NewAccount,
+        list: &StoredDeviceList,
+        certificate: &StoredCertificate,
+        envelopes: &[StoredEnvelope],
+    ) -> impl Future<Output = Result<(), StoreError>> + Send;
+
+    /// Stores a device's sign-in challenge, replacing any earlier one.
+    fn put_challenge(
+        &self,
+        device: DeviceId,
+        nonce: [u8; 32],
+        expires_ms: u64,
+    ) -> impl Future<Output = Result<(), StoreError>> + Send;
+
+    /// Takes (and so uses up) a device's challenge: the nonce and its expiry.
+    fn take_challenge(
+        &self,
+        device: DeviceId,
+    ) -> impl Future<Output = Result<Option<([u8; 32], u64)>, StoreError>> + Send;
+
+    /// Records a session by the hash of its token.
+    fn create_session(
+        &self,
+        hash: [u8; 32],
+        session: &SessionRow,
+    ) -> impl Future<Output = Result<(), StoreError>> + Send;
+
+    /// The session with this token hash.
+    fn session(
+        &self,
+        hash: [u8; 32],
+    ) -> impl Future<Output = Result<Option<SessionRow>, StoreError>> + Send;
+
+    /// Deletes sessions and challenges that expired before `now_ms`; returns how many.
+    fn drop_expired_sessions(
+        &self,
+        now_ms: u64,
+    ) -> impl Future<Output = Result<u64, StoreError>> + Send;
+
+    // ── keys ──────────────────────────────────────────────────────────────────────
+
+    /// Every envelope of an account.
+    fn envelopes(
+        &self,
+        account: AccountId,
+    ) -> impl Future<Output = Result<Vec<StoredEnvelope>, StoreError>> + Send;
+
+    /// Adds a new key epoch's envelopes if the account's newest epoch is `epoch - 1`
+    /// ([`StoreError::Conflict`] otherwise).
+    fn add_epoch(
+        &self,
+        account: AccountId,
+        epoch: u32,
+        envelopes: &[StoredEnvelope],
+    ) -> impl Future<Output = Result<(), StoreError>> + Send;
+
+    // ── collections ───────────────────────────────────────────────────────────────
+
+    /// An account's collections that aren't in the trash.
+    fn collections(
+        &self,
+        account: AccountId,
+    ) -> impl Future<Output = Result<Vec<CollectionRow>, StoreError>> + Send;
+
+    /// Changes a collection's retention and/or configuration.
+    fn update_collection(
+        &self,
+        id: CollectionId,
+        retention_days: Option<u32>,
+        config: Option<&[u8]>,
+    ) -> impl Future<Output = Result<(), StoreError>> + Send;
+
+    /// Moves a collection to the trash at `now_ms`.
+    fn delete_collection(
+        &self,
+        id: CollectionId,
+        now_ms: u64,
+    ) -> impl Future<Output = Result<(), StoreError>> + Send;
+
+    /// Stored bytes of a collection.
+    fn collection_usage(
+        &self,
+        id: CollectionId,
+    ) -> impl Future<Output = Result<u64, StoreError>> + Send;
+
+    /// Collections in the trash longer than their retention and not yet emptied.
+    fn purgeable_collections(
+        &self,
+        now_ms: u64,
+    ) -> impl Future<Output = Result<Vec<CollectionId>, StoreError>> + Send;
+
+    /// Empties a trashed collection: its commits, records, leases, envelopes and
+    /// attestations go; its chunks become garbage. The collection row stays, marked.
+    fn purge_collection(
+        &self,
+        id: CollectionId,
+    ) -> impl Future<Output = Result<(), StoreError>> + Send;
+
+    // ── pairings and attestations ─────────────────────────────────────────────────
+
+    /// Records a pending pairing.
+    fn create_pairing(
+        &self,
+        pairing: &PairingRow,
+    ) -> impl Future<Output = Result<(), StoreError>> + Send;
+
+    /// A pairing.
+    fn pairing(
+        &self,
+        id: PairingId,
+    ) -> impl Future<Output = Result<Option<PairingRow>, StoreError>> + Send;
+
+    /// Stores the approval of a pairing that is pending and unexpired at `now_ms`; `false`
+    /// otherwise.
+    fn approve_pairing(
+        &self,
+        id: PairingId,
+        approval: &[u8],
+        now_ms: u64,
+    ) -> impl Future<Output = Result<bool, StoreError>> + Send;
+
+    /// Deletes pairings that expired before `now_ms`; returns how many.
+    fn drop_expired_pairings(
+        &self,
+        now_ms: u64,
+    ) -> impl Future<Output = Result<u64, StoreError>> + Send;
+
+    /// Replaces a device's attestation for a collection.
+    fn put_attestation(
+        &self,
+        collection: CollectionId,
+        attestation: &StoredAttestation,
+    ) -> impl Future<Output = Result<(), StoreError>> + Send;
+
+    /// Every device's latest attestation for a collection, in device order.
+    fn attestations(
+        &self,
+        collection: CollectionId,
+    ) -> impl Future<Output = Result<Vec<StoredAttestation>, StoreError>> + Send;
 
     /// An account's current device list.
     fn device_list(

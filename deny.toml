@@ -45,6 +45,13 @@ skip = [
   { crate = "hashbrown@0.16.1", reason = "sqlx-core 0.9.0 and its hashlink use hashbrown 0.16 while indexmap uses 0.17; server crates only, remove once sqlx updates" },
   { crate = "getrandom@0.2.17", reason = "ring 0.17 (rustls for sqlx's PostgreSQL TLS) still uses getrandom 0.2; remove once ring updates" },
   { crate = "windows-sys@0.52.0", reason = "ring 0.17 (rustls for sqlx's PostgreSQL TLS) still uses windows-sys 0.52; remove once ring updates" },
+  { crate = "rand@0.9.5", reason = "governor 0.10.4 and tungstenite 0.29 (axum's WebSockets) still use rand 0.9 while sqlx-postgres and our code use 0.10; remove once they update" },
+  { crate = "rand_core@0.9.5", reason = "comes with rand 0.9 (governor, tungstenite), see above" },
+  { crate = "rand_chacha@0.9.0", reason = "comes with rand 0.9 (governor, tungstenite), see above" },
+  { crate = "getrandom@0.3.4", reason = "comes with rand 0.9 (governor, tungstenite), see above" },
+  { crate = "r-efi@5.3.0", reason = "comes with getrandom 0.3 (rand 0.9), see above" },
+  { crate = "hashbrown@0.14.5", reason = "dashmap 6 (governor's keyed rate limiters) still uses hashbrown 0.14; remove once dashmap updates" },
+  { crate = "base64@0.22.1", reason = "axum 0.8.9 and sqlx-core 0.9.0 still use base64 0.22 while hyper-util's client (reqwest, tests only) uses 0.23; remove once they update" },
 ]
 
 [sources]

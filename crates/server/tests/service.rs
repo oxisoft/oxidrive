@@ -336,13 +336,14 @@ async fn device_list_rules() {
         .put_device_list(f.account, Some(1), &add_two, std::slice::from_ref(&two))
         .await
         .unwrap();
-    // Same version again: a rollback.
+    // Same version again: stale, like a list another device got in first.
     let again = f.list(2, std::slice::from_ref(&zero), &[]);
-    assert!(invalid(
+    assert_eq!(
         f.service
             .put_device_list(f.account, Some(2), &again, &[])
-            .await
-    ));
+            .await,
+        Err(ServiceError::Conflict(None))
+    );
     // Revoking device 1, then trusting it again, is refused.
     let revoke = f.list(3, &[zero.clone(), two.clone()], &[1]);
     f.service

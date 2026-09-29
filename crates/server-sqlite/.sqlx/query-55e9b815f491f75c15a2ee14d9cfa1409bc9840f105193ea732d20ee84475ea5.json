@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO challenges (device, nonce, expires_ms) VALUES (?, ?, ?)\n             ON CONFLICT (device) DO UPDATE SET nonce = excluded.nonce,\n                                                expires_ms = excluded.expires_ms",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": []
+  },
+  "hash": "55e9b815f491f75c15a2ee14d9cfa1409bc9840f105193ea732d20ee84475ea5"
+}

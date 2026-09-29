@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE pairings SET approval = ?\n             WHERE id = ? AND approval IS NULL AND expires_ms > ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": []
+  },
+  "hash": "1352589d692e5d805d31a5ba9b1e80228aa5bee89e0ab439a48127a8443985bb"
+}

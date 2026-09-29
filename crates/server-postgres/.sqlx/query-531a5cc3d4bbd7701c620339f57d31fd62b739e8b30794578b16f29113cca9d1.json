@@ -1,0 +1,40 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "DELETE FROM challenges WHERE device = $1 RETURNING nonce, expires_ms",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "nonce",
+        "type_info": "Bytea",
+        "origin": {
+          "Table": {
+            "table": "challenges",
+            "name": "nonce"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "expires_ms",
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "challenges",
+            "name": "expires_ms"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Bytea"
+      ]
+    },
+    "nullable": [
+      false,
+      false
+    ]
+  },
+  "hash": "531a5cc3d4bbd7701c620339f57d31fd62b739e8b30794578b16f29113cca9d1"
+}

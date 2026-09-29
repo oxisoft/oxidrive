@@ -1,0 +1,38 @@
+{
+  "db_name": "SQLite",
+  "query": "DELETE FROM challenges WHERE device = ? RETURNING nonce, expires_ms",
+  "describe": {
+    "columns": [
+      {
+        "name": "nonce",
+        "ordinal": 0,
+        "type_info": "Blob",
+        "origin": {
+          "Table": {
+            "table": "challenges",
+            "name": "nonce"
+          }
+        }
+      },
+      {
+        "name": "expires_ms",
+        "ordinal": 1,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "challenges",
+            "name": "expires_ms"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false
+    ]
+  },
+  "hash": "04e7b9077487aa5b70fd6f5c52f1c825527c43d35abb29f21af688be518ecaae"
+}

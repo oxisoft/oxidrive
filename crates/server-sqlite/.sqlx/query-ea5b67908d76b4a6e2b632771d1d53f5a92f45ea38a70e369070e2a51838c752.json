@@ -1,0 +1,74 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT kind, epoch, device, collection, encoded FROM envelopes WHERE account = ?\n             ORDER BY kind, epoch, device, collection",
+  "describe": {
+    "columns": [
+      {
+        "name": "kind",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "envelopes",
+            "name": "kind"
+          }
+        }
+      },
+      {
+        "name": "epoch",
+        "ordinal": 1,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "envelopes",
+            "name": "epoch"
+          }
+        }
+      },
+      {
+        "name": "device",
+        "ordinal": 2,
+        "type_info": "Blob",
+        "origin": {
+          "Table": {
+            "table": "envelopes",
+            "name": "device"
+          }
+        }
+      },
+      {
+        "name": "collection",
+        "ordinal": 3,
+        "type_info": "Blob",
+        "origin": {
+          "Table": {
+            "table": "envelopes",
+            "name": "collection"
+          }
+        }
+      },
+      {
+        "name": "encoded",
+        "ordinal": 4,
+        "type_info": "Blob",
+        "origin": {
+          "Table": {
+            "table": "envelopes",
+            "name": "encoded"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "ea5b67908d76b4a6e2b632771d1d53f5a92f45ea38a70e369070e2a51838c752"
+}

@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "DELETE FROM challenges WHERE expires_ms <= $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int8"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "49bd71ea16c993bb69930c0382dcfebcbef43673a1ab2bff4f8f37e5c7e660f6"
+}

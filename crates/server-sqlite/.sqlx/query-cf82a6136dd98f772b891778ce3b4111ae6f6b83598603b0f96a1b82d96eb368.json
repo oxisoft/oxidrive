@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE collections SET purged = 1 WHERE id = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": []
+  },
+  "hash": "cf82a6136dd98f772b891778ce3b4111ae6f6b83598603b0f96a1b82d96eb368"
+}

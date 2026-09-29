@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "DELETE FROM attestations WHERE collection = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": []
+  },
+  "hash": "516a74cb7b0731e82e0ccfbafe67f152a57a3baa099478c6c0edd5a278ddbbc3"
+}

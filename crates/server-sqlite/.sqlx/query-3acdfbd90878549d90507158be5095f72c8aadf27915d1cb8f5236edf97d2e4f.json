@@ -1,0 +1,38 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT device, signed FROM device_certificates WHERE account = ? ORDER BY device",
+  "describe": {
+    "columns": [
+      {
+        "name": "device",
+        "ordinal": 0,
+        "type_info": "Blob",
+        "origin": {
+          "Table": {
+            "table": "device_certificates",
+            "name": "device"
+          }
+        }
+      },
+      {
+        "name": "signed",
+        "ordinal": 1,
+        "type_info": "Blob",
+        "origin": {
+          "Table": {
+            "table": "device_certificates",
+            "name": "signed"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false
+    ]
+  },
+  "hash": "3acdfbd90878549d90507158be5095f72c8aadf27915d1cb8f5236edf97d2e4f"
+}

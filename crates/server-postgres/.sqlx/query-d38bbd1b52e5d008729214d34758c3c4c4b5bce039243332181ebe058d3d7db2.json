@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "DELETE FROM envelopes WHERE collection = $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Bytea"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "d38bbd1b52e5d008729214d34758c3c4c4b5bce039243332181ebe058d3d7db2"
+}

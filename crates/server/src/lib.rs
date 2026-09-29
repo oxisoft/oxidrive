@@ -6,8 +6,13 @@
 //!
 //! The HTTP API and the `oxidrive-server` binary follow in steps 6b and 6c.
 
+mod api;
 mod blob;
 mod service;
 
+pub use api::{Api, ApiConfig, Deps, RateLimits, ServiceOf, With};
+
 pub use blob::{BlobError, BlobKey, BlobOp, BlobStore, ChunkBytes, FsBlobStore, MemBlobStore};
-pub use service::{Clock, FsckReport, GcReport, Service, ServiceError, Settings, SystemClock};
+pub use service::{
+    Caller, Clock, FsckReport, GcReport, Service, ServiceError, Settings, SystemClock,
+};

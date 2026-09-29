@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "DELETE FROM sessions WHERE account = $1 AND device = $2",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Bytea",
+        "Bytea"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "8858edbb2a837c4cf2f2436eddbcd721d7d9d8535f51dd19279d398e89180501"
+}

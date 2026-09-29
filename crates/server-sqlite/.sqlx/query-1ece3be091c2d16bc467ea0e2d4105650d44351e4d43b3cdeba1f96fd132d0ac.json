@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE collections SET deleted_ms = ? WHERE id = ? AND deleted_ms IS NULL",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "1ece3be091c2d16bc467ea0e2d4105650d44351e4d43b3cdeba1f96fd132d0ac"
+}

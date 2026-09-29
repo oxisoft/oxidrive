@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "DELETE FROM pairings WHERE expires_ms <= ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": []
+  },
+  "hash": "77a081f7a0943fe89c43e75a5bb6214b5acd876041c2f3587c9cd906dc7638e4"
+}

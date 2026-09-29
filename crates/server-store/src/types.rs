@@ -2,7 +2,8 @@
 
 use oxisoft_drive_proto::api::Head;
 use oxisoft_drive_proto::{
-    AccountId, ChunkId, CollectionId, CommitHash, DeviceId, LeaseId, NodeId, RecordHash, Seq,
+    AccountId, ChunkId, CollectionId, CommitHash, DeviceId, LeaseId, NodeId, PairingId, RecordHash,
+    Seq,
 };
 
 /// Whether an account may be used.
@@ -22,6 +23,8 @@ pub struct NewAccount {
     /// The account signing key (ASK) public key, which signs its device lists and
     /// certificates.
     pub signing_key: Vec<u8>,
+    /// The encoded `Signed<KemKeyPublication>` (empty for accounts made without one).
+    pub kem_key: Vec<u8>,
     /// Stored bytes allowed.
     pub quota_bytes: u64,
     /// Milliseconds since the Unix epoch.
@@ -35,6 +38,8 @@ pub struct AccountRow {
     pub id: AccountId,
     /// The account signing key (ASK) public key.
     pub signing_key: Vec<u8>,
+    /// The encoded `Signed<KemKeyPublication>` (empty if none).
+    pub kem_key: Vec<u8>,
     /// Whether it may be used.
     pub status: AccountStatus,
     /// Stored bytes allowed.
@@ -76,6 +81,8 @@ pub struct NewCollection {
     pub retention_days: u32,
     /// Milliseconds since the Unix epoch.
     pub created_ms: u64,
+    /// Its key, wrapped with the account key.
+    pub key: Option<StoredEnvelope>,
 }
 
 /// A stored collection.
@@ -91,6 +98,8 @@ pub struct CollectionRow {
     pub retention_days: u32,
     /// Milliseconds since the Unix epoch.
     pub created_ms: u64,
+    /// When it was moved to the trash, if it was.
+    pub deleted_ms: Option<u64>,
 }
 
 /// One record of a commit, prepared by the service.
@@ -222,4 +231,52 @@ pub struct ChunkRow {
     pub size: u64,
     /// Milliseconds since the Unix epoch.
     pub stored_ms: u64,
+}
+
+/// A wrapped key as stored: its addressing columns and the encoded proto `Envelope`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StoredEnvelope {
+    /// The envelope kind's code.
+    pub kind: u8,
+    /// The epoch of the wrapped key.
+    pub epoch: u32,
+    /// The recipient device, for keys wrapped to a device.
+    pub device: Option<DeviceId>,
+    /// The collection, for collection keys.
+    pub collection: Option<CollectionId>,
+    /// The encoded `Envelope`.
+    pub encoded: Vec<u8>,
+}
+
+/// A signed-in device's session. The token itself is never stored, only its hash.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SessionRow {
+    /// The account.
+    pub account: AccountId,
+    /// The device.
+    pub device: DeviceId,
+    /// When it expires, milliseconds since the Unix epoch.
+    pub expires_ms: u64,
+}
+
+/// A pending or approved device pairing.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PairingRow {
+    /// Its ID.
+    pub id: PairingId,
+    /// The encoded `PairingRequest`: the new device's public keys.
+    pub request: Vec<u8>,
+    /// When it expires, milliseconds since the Unix epoch.
+    pub expires_ms: u64,
+    /// The encoded `PairingApproval`, once approved.
+    pub approval: Option<Vec<u8>>,
+}
+
+/// A device's latest signed head attestation.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StoredAttestation {
+    /// The attesting device.
+    pub device: DeviceId,
+    /// The encoded `Signed<HeadAttestation>`.
+    pub signed: Vec<u8>,
 }

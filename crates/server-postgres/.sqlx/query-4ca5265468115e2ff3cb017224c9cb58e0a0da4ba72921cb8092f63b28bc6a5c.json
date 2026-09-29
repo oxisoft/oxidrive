@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "DELETE FROM record_chunks WHERE collection = $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Bytea"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "4ca5265468115e2ff3cb017224c9cb58e0a0da4ba72921cb8092f63b28bc6a5c"
+}

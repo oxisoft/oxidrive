@@ -1,0 +1,50 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT request, expires_ms, approval FROM pairings WHERE id = ?",
+  "describe": {
+    "columns": [
+      {
+        "name": "request",
+        "ordinal": 0,
+        "type_info": "Blob",
+        "origin": {
+          "Table": {
+            "table": "pairings",
+            "name": "request"
+          }
+        }
+      },
+      {
+        "name": "expires_ms",
+        "ordinal": 1,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "pairings",
+            "name": "expires_ms"
+          }
+        }
+      },
+      {
+        "name": "approval",
+        "ordinal": 2,
+        "type_info": "Blob",
+        "origin": {
+          "Table": {
+            "table": "pairings",
+            "name": "approval"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false,
+      true
+    ]
+  },
+  "hash": "e0c47a176339206c3fbd9aea08a6e94c986d5c43142a8a65aa7ccd27097a76f0"
+}

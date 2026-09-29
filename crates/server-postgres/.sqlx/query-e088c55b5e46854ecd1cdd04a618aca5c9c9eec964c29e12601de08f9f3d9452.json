@@ -1,0 +1,23 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT MAX(epoch) AS \"newest: i64\" FROM envelopes WHERE account = $1",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "newest: i64",
+        "type_info": "Int8",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Bytea"
+      ]
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "e088c55b5e46854ecd1cdd04a618aca5c9c9eec964c29e12601de08f9f3d9452"
+}

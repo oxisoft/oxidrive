@@ -6,7 +6,8 @@
     clippy::unwrap_used,
     clippy::panic,
     clippy::missing_panics_doc,
-    reason = "a test suite: every case panics when the store misbehaves"
+    clippy::too_many_lines,
+    reason = "a test suite: every case panics when the store misbehaves, and some tell a long story"
 )]
 
 use std::sync::Arc;
@@ -14,13 +15,14 @@ use std::sync::Arc;
 use oxisoft_drive_crypto::hash::Digest;
 use oxisoft_drive_proto::api::Head;
 use oxisoft_drive_proto::{
-    AccountId, ChunkId, CollectionId, CommitHash, DeviceId, LeaseId, NodeId, RecordHash, Seq,
+    AccountId, ChunkId, CollectionId, CommitHash, DeviceId, LeaseId, NodeId, PairingId, RecordHash,
+    Seq,
 };
 
 use crate::{
     AccountStatus, AppendOutcome, MetaStore, NewAccount, NewChunk, NewCollection, NewLease,
-    PreparedAppend, PreparedRecord, RecordRef, StoreError, StoredCertificate, StoredDeviceList,
-    StoredSlot,
+    PairingRow, PreparedAppend, PreparedRecord, RecordRef, SessionRow, StoreError,
+    StoredAttestation, StoredCertificate, StoredDeviceList, StoredEnvelope, StoredSlot,
 };
 
 /// Generates one `#[tokio::test]` per conformance case, each on a fresh store made by
@@ -32,6 +34,8 @@ macro_rules! conformance_tests {
     ($fresh:expr) => {
         $crate::conformance_tests!(@cases $fresh;
             accounts, device_lists, collections, appends_and_heads, appends_need_chunks, paging,
+            invites_create_accounts, sign_in_state, envelopes_and_epochs, collection_lifecycle,
+            pairings, attestations,
             superseding_and_pruning, chunks_and_usage, leases, garbage, all_chunks_in_order);
         #[::tokio::test(flavor = "multi_thread", worker_threads = 4)]
         async fn racing_appends() {
@@ -68,6 +72,20 @@ fn collection_id(n: u8) -> CollectionId {
     CollectionId::from_bytes([n; 16])
 }
 
+fn device_id(n: u8) -> DeviceId {
+    DeviceId::from_bytes([n; 16])
+}
+
+fn envelope(kind: u8, epoch: u32, device: Option<u8>, collection: Option<u8>) -> StoredEnvelope {
+    StoredEnvelope {
+        kind,
+        epoch,
+        device: device.map(device_id),
+        collection: collection.map(collection_id),
+        encoded: vec![kind, u8::try_from(epoch).unwrap(), device.unwrap_or(0)],
+    }
+}
+
 fn chunk_id(n: u8) -> ChunkId {
     ChunkId(Digest::from_bytes([n; 32]))
 }
@@ -88,6 +106,7 @@ async fn with_collection<S: MetaStore>(store: &S, account: u8, collection: u8) {
         .create_account(&NewAccount {
             id: account_id(account),
             signing_key: vec![account; 32],
+            kem_key: Vec::new(),
             quota_bytes: 1 << 30,
             created_ms: 1,
         })
@@ -100,6 +119,7 @@ async fn with_collection<S: MetaStore>(store: &S, account: u8, collection: u8) {
             config: vec![collection],
             retention_days: 30,
             created_ms: 2,
+            key: Some(envelope(3, 0, None, Some(collection))),
         })
         .await
         .unwrap();
@@ -157,6 +177,7 @@ pub async fn accounts<S: MetaStore>(store: &S) {
     let new = NewAccount {
         id: account_id(1),
         signing_key: vec![8; 32],
+        kem_key: vec![6; 5],
         quota_bytes: 5000,
         created_ms: 42,
     };
@@ -164,7 +185,7 @@ pub async fn accounts<S: MetaStore>(store: &S) {
     assert_eq!(store.create_account(&new).await, Err(StoreError::Duplicate));
     let row = store.account(account_id(1)).await.unwrap().unwrap();
     assert_eq!(row.status, AccountStatus::Active);
-    assert_eq!(row.signing_key, vec![8; 32]);
+    assert_eq!((row.signing_key, row.kem_key), (vec![8; 32], vec![6; 5]));
     assert_eq!(
         (row.quota_bytes, row.used_bytes, row.created_ms),
         (5000, 0, 42)
@@ -186,7 +207,14 @@ pub async fn device_lists<S: MetaStore>(store: &S) {
         signed: vec![9, 9, 9],
     };
     store
-        .put_device_list(account, None, &first, std::slice::from_ref(&certificate))
+        .put_device_list(
+            account,
+            None,
+            &first,
+            std::slice::from_ref(&certificate),
+            &[],
+            &[],
+        )
         .await
         .unwrap();
     assert_eq!(
@@ -202,11 +230,15 @@ pub async fn device_lists<S: MetaStore>(store: &S) {
         signed: vec![2, 2],
     };
     assert_eq!(
-        store.put_device_list(account, None, &second, &[]).await,
+        store
+            .put_device_list(account, None, &second, &[], &[], &[])
+            .await,
         Err(StoreError::Conflict)
     );
     assert_eq!(
-        store.put_device_list(account, Some(5), &second, &[]).await,
+        store
+            .put_device_list(account, Some(5), &second, &[], &[], &[])
+            .await,
         Err(StoreError::Conflict)
     );
     // A certificate added again is kept as it was.
@@ -215,7 +247,7 @@ pub async fn device_lists<S: MetaStore>(store: &S) {
         signed: vec![0],
     };
     store
-        .put_device_list(account, Some(1), &second, &[other])
+        .put_device_list(account, Some(1), &second, &[other], &[], &[])
         .await
         .unwrap();
     assert_eq!(store.device_list(account).await.unwrap(), Some(second));
@@ -237,8 +269,14 @@ pub async fn collections<S: MetaStore>(store: &S) {
     with_collection(store, 1, 1).await;
     let row = store.collection(collection_id(1)).await.unwrap().unwrap();
     assert_eq!(
-        (row.account, row.config, row.retention_days, row.created_ms),
-        (account_id(1), vec![1], 30, 2)
+        (
+            row.account,
+            row.config,
+            row.retention_days,
+            row.created_ms,
+            row.deleted_ms
+        ),
+        (account_id(1), vec![1], 30, 2, None)
     );
     let again = NewCollection {
         id: collection_id(1),
@@ -246,6 +284,7 @@ pub async fn collections<S: MetaStore>(store: &S) {
         config: Vec::new(),
         retention_days: 1,
         created_ms: 3,
+        key: None,
     };
     assert_eq!(
         store.create_collection(&again).await,
@@ -668,4 +707,364 @@ pub async fn garbage_never_takes_a_chunk_being_committed<S: MetaStore + 'static>
             AppendOutcome::Conflict(head) => panic!("round {seq}: conflict at {head:?}"),
         }
     }
+}
+
+/// An invite creates an account with its first list, certificate and envelopes, once.
+pub async fn invites_create_accounts<S: MetaStore>(store: &S) {
+    let invite = [4; 32];
+    store.create_invite(invite, 100).await.unwrap();
+    let account = NewAccount {
+        id: account_id(1),
+        signing_key: vec![1; 32],
+        kem_key: vec![2; 8],
+        quota_bytes: 10,
+        created_ms: 5,
+    };
+    let list = StoredDeviceList {
+        version: 1,
+        signed: vec![1],
+    };
+    let certificate = StoredCertificate {
+        device: device_id(3),
+        signed: vec![3],
+    };
+    let envelopes = [envelope(0, 0, Some(3), None), envelope(1, 0, None, None)];
+    let create = |invite: [u8; 32], now: u64, account: NewAccount| {
+        let (list, certificate, envelopes) = (list.clone(), certificate.clone(), envelopes.clone());
+        async move {
+            store
+                .create_account_by_invite(invite, now, &account, &list, &certificate, &envelopes)
+                .await
+        }
+    };
+    // Unknown and expired invites change nothing.
+    assert_eq!(
+        create([9; 32], 50, account.clone()).await,
+        Err(StoreError::NotFound)
+    );
+    assert_eq!(
+        create(invite, 100, account.clone()).await,
+        Err(StoreError::NotFound)
+    );
+    create(invite, 50, account.clone()).await.unwrap();
+    // Used up.
+    let other = NewAccount {
+        id: account_id(2),
+        ..account.clone()
+    };
+    assert_eq!(create(invite, 50, other).await, Err(StoreError::NotFound));
+    assert_eq!(
+        store.account(account_id(1)).await.unwrap().unwrap().kem_key,
+        vec![2; 8]
+    );
+    assert_eq!(
+        store.device_list(account_id(1)).await.unwrap(),
+        Some(list.clone())
+    );
+    assert_eq!(
+        store.certificates(account_id(1)).await.unwrap(),
+        std::slice::from_ref(&certificate)
+    );
+    assert_eq!(
+        store.account_of_device(device_id(3)).await.unwrap(),
+        Some(account_id(1))
+    );
+    assert_eq!(store.account_of_device(device_id(4)).await.unwrap(), None);
+    assert_eq!(store.envelopes(account_id(1)).await.unwrap(), envelopes);
+    // A second invite for an existing account is a duplicate, and leaves the invite unused.
+    store.create_invite([5; 32], 100).await.unwrap();
+    assert_eq!(
+        create([5; 32], 50, account).await,
+        Err(StoreError::Duplicate)
+    );
+    let fresh = NewAccount {
+        id: account_id(3),
+        signing_key: Vec::new(),
+        kem_key: Vec::new(),
+        quota_bytes: 1,
+        created_ms: 1,
+    };
+    let sixth = StoredCertificate {
+        device: device_id(6),
+        signed: vec![6],
+    };
+    store
+        .create_account_by_invite(
+            [5; 32],
+            50,
+            &fresh,
+            &StoredDeviceList {
+                version: 1,
+                signed: vec![],
+            },
+            &sixth,
+            &[],
+        )
+        .await
+        .unwrap();
+}
+
+/// Challenges are used up once; sessions end on expiry and on revocation.
+pub async fn sign_in_state<S: MetaStore>(store: &S) {
+    with_collection(store, 1, 1).await;
+    let (device, other) = (device_id(3), device_id(4));
+    assert_eq!(store.take_challenge(device).await.unwrap(), None);
+    store.put_challenge(device, [1; 32], 100).await.unwrap();
+    store.put_challenge(device, [2; 32], 200).await.unwrap();
+    assert_eq!(
+        store.take_challenge(device).await.unwrap(),
+        Some(([2; 32], 200))
+    );
+    assert_eq!(store.take_challenge(device).await.unwrap(), None);
+
+    let session = |device, expires_ms| SessionRow {
+        account: account_id(1),
+        device,
+        expires_ms,
+    };
+    store
+        .create_session([7; 32], &session(device, 100))
+        .await
+        .unwrap();
+    store
+        .create_session([8; 32], &session(other, 300))
+        .await
+        .unwrap();
+    assert_eq!(
+        store.create_session([7; 32], &session(device, 1)).await,
+        Err(StoreError::Duplicate)
+    );
+    assert_eq!(
+        store.session([7; 32]).await.unwrap(),
+        Some(session(device, 100))
+    );
+    store.put_challenge(other, [3; 32], 100).await.unwrap();
+    assert_eq!(store.drop_expired_sessions(100).await.unwrap(), 2);
+    assert_eq!(store.session([7; 32]).await.unwrap(), None);
+    assert_eq!(store.take_challenge(other).await.unwrap(), None);
+    // Revoking a device ends its sessions with the new list.
+    let list = StoredDeviceList {
+        version: 1,
+        signed: vec![1],
+    };
+    store
+        .put_device_list(account_id(1), None, &list, &[], &[], &[other])
+        .await
+        .unwrap();
+    assert_eq!(store.session([8; 32]).await.unwrap(), None);
+}
+
+/// Envelopes by account; a new epoch follows the newest; new devices' envelopes arrive with
+/// the device list.
+pub async fn envelopes_and_epochs<S: MetaStore>(store: &S) {
+    with_collection(store, 1, 1).await;
+    let account = account_id(1);
+    // The collection key came with the collection.
+    assert_eq!(
+        store.envelopes(account).await.unwrap(),
+        [envelope(3, 0, None, Some(1))]
+    );
+    let list = StoredDeviceList {
+        version: 1,
+        signed: vec![1],
+    };
+    let first = [envelope(0, 0, Some(3), None), envelope(1, 0, None, None)];
+    store
+        .put_device_list(account, None, &list, &[], &first, &[])
+        .await
+        .unwrap();
+    assert_eq!(store.envelopes(account).await.unwrap().len(), 3);
+    assert_eq!(
+        store
+            .add_epoch(account, 2, &[envelope(0, 2, Some(3), None)])
+            .await,
+        Err(StoreError::Conflict)
+    );
+    let next = [envelope(0, 1, Some(3), None), envelope(2, 1, None, None)];
+    store.add_epoch(account, 1, &next).await.unwrap();
+    assert_eq!(
+        store.add_epoch(account, 1, &next).await,
+        Err(StoreError::Conflict)
+    );
+    let all = store.envelopes(account).await.unwrap();
+    assert_eq!(all.len(), 5);
+    assert!(all.contains(&next[1]));
+    assert!(store.envelopes(account_id(2)).await.unwrap().is_empty());
+}
+
+/// Listing, changing, trashing and emptying collections.
+pub async fn collection_lifecycle<S: MetaStore>(store: &S) {
+    with_collection(store, 1, 1).await;
+    with_collection(store, 1, 2).await;
+    let ids = |rows: Vec<crate::CollectionRow>| -> Vec<CollectionId> {
+        rows.into_iter().map(|row| row.id).collect()
+    };
+    assert_eq!(
+        ids(store.collections(account_id(1)).await.unwrap()),
+        [collection_id(1), collection_id(2)]
+    );
+    store
+        .update_collection(collection_id(1), Some(7), None)
+        .await
+        .unwrap();
+    store
+        .update_collection(collection_id(1), None, Some(&[9]))
+        .await
+        .unwrap();
+    let row = store.collection(collection_id(1)).await.unwrap().unwrap();
+    assert_eq!((row.retention_days, row.config), (7, vec![9]));
+    assert_eq!(
+        store
+            .update_collection(collection_id(5), Some(1), None)
+            .await,
+        Err(StoreError::NotFound)
+    );
+    store_chunk(store, 1, 1, 40).await;
+    store_chunk(store, 1, 2, 2).await;
+    assert_eq!(store.collection_usage(collection_id(1)).await.unwrap(), 42);
+    assert_eq!(store.collection_usage(collection_id(2)).await.unwrap(), 0);
+    append_ok(store, &commit(1, 1, 1, vec![record(1, 11, &[1, 2])])).await;
+    store
+        .put_attestation(
+            collection_id(1),
+            &StoredAttestation {
+                device: device_id(3),
+                signed: vec![1],
+            },
+        )
+        .await
+        .unwrap();
+
+    store
+        .delete_collection(collection_id(1), 1000)
+        .await
+        .unwrap();
+    assert_eq!(
+        store.delete_collection(collection_id(1), 1000).await,
+        Err(StoreError::NotFound)
+    );
+    assert_eq!(
+        ids(store.collections(account_id(1)).await.unwrap()),
+        [collection_id(2)]
+    );
+    assert_eq!(
+        store
+            .collection(collection_id(1))
+            .await
+            .unwrap()
+            .unwrap()
+            .deleted_ms,
+        Some(1000)
+    );
+    // Retention 7 days from 1000.
+    assert!(
+        store
+            .purgeable_collections(1000 + 7 * DAY_MS - 1)
+            .await
+            .unwrap()
+            .is_empty()
+    );
+    assert_eq!(
+        store
+            .purgeable_collections(1000 + 7 * DAY_MS)
+            .await
+            .unwrap(),
+        [collection_id(1)]
+    );
+    assert!(store.garbage(0, 10).await.unwrap().is_empty());
+    store.purge_collection(collection_id(1)).await.unwrap();
+    assert!(
+        store
+            .purgeable_collections(u64::MAX)
+            .await
+            .unwrap()
+            .is_empty()
+    );
+    assert!(
+        store
+            .commits_after(collection_id(1), 0, 10)
+            .await
+            .unwrap()
+            .is_empty()
+    );
+    assert!(
+        store
+            .attestations(collection_id(1))
+            .await
+            .unwrap()
+            .is_empty()
+    );
+    assert!(
+        store
+            .envelopes(account_id(1))
+            .await
+            .unwrap()
+            .iter()
+            .all(|e| e.collection != Some(collection_id(1)))
+    );
+    // Its chunks are garbage now.
+    assert_eq!(store.garbage(0, 10).await.unwrap().len(), 2);
+}
+
+/// Pairings are approved once, before they expire.
+pub async fn pairings<S: MetaStore>(store: &S) {
+    let id = PairingId::from_bytes([3; 16]);
+    assert_eq!(store.pairing(id).await.unwrap(), None);
+    let pending = PairingRow {
+        id,
+        request: vec![1, 2],
+        expires_ms: 100,
+        approval: None,
+    };
+    store.create_pairing(&pending).await.unwrap();
+    assert_eq!(
+        store.create_pairing(&pending).await,
+        Err(StoreError::Duplicate)
+    );
+    assert_eq!(store.pairing(id).await.unwrap(), Some(pending.clone()));
+    assert!(!store.approve_pairing(id, &[7], 100).await.unwrap());
+    assert!(store.approve_pairing(id, &[7], 99).await.unwrap());
+    assert!(!store.approve_pairing(id, &[8], 99).await.unwrap());
+    assert_eq!(
+        store.pairing(id).await.unwrap().unwrap().approval,
+        Some(vec![7])
+    );
+    assert!(
+        !store
+            .approve_pairing(PairingId::from_bytes([4; 16]), &[7], 1)
+            .await
+            .unwrap()
+    );
+    assert_eq!(store.drop_expired_pairings(99).await.unwrap(), 0);
+    assert_eq!(store.drop_expired_pairings(100).await.unwrap(), 1);
+    assert_eq!(store.pairing(id).await.unwrap(), None);
+}
+
+/// The latest attestation per device and collection.
+pub async fn attestations<S: MetaStore>(store: &S) {
+    with_collection(store, 1, 1).await;
+    let attest = |device, signed: u8| StoredAttestation {
+        device: device_id(device),
+        signed: vec![signed],
+    };
+    store
+        .put_attestation(collection_id(1), &attest(4, 1))
+        .await
+        .unwrap();
+    store
+        .put_attestation(collection_id(1), &attest(3, 2))
+        .await
+        .unwrap();
+    store
+        .put_attestation(collection_id(1), &attest(4, 3))
+        .await
+        .unwrap();
+    assert_eq!(
+        store.attestations(collection_id(1)).await.unwrap(),
+        [attest(3, 2), attest(4, 3)]
+    );
+    assert_eq!(
+        store.put_attestation(collection_id(9), &attest(3, 1)).await,
+        Err(StoreError::NotFound)
+    );
 }

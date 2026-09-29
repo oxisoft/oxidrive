@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO device_lists (account, version, signed) VALUES (?, ?, ?)\n         ON CONFLICT (account) DO UPDATE SET version = excluded.version,\n                                             signed = excluded.signed",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": []
+  },
+  "hash": "37be0108f41e203bac7fa5819926a9951c51b5450ebf51019eeebd3b8609336f"
+}

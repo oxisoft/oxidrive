@@ -1,0 +1,28 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT id FROM collections\n             WHERE deleted_ms IS NOT NULL AND purged = 0\n               AND deleted_ms + retention_days * 86400000 <= $1\n             ORDER BY id",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Bytea",
+        "origin": {
+          "Table": {
+            "table": "collections",
+            "name": "id"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "4418d2d7b5004f2ae7024ebdc5a7e26a2dab118254f8db0a5c033cc094c95e93"
+}

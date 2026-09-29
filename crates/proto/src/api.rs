@@ -432,13 +432,8 @@ pub enum Event {
         #[n(0)]
         collection: CollectionId,
     },
-    /// A new device waits for approval.
-    #[n(4)]
-    Pairing {
-        /// The pending pairing.
-        #[n(0)]
-        pairing: PairingId,
-    },
+    // 4 is retired: a "pairing waiting" event the server can't address, since a new device
+    // isn't signed in to any account (server HTTP I4). Never reuse it.
 }
 
 /// Machine-readable error codes (server API §1).
@@ -733,9 +728,6 @@ mod tests {
             Event::Keys { epoch: 1 },
             Event::Attestation {
                 collection: CollectionId::from_bytes([1; 16]),
-            },
-            Event::Pairing {
-                pairing: PairingId::from_bytes([2; 16]),
             },
         ] {
             round_trip(&event);

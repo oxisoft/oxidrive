@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "DELETE FROM attestations WHERE collection = $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Bytea"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "74e2756be1dac9804cc9ab1c6f24dd0fe869277e6eb405a47f350e6494ad7944"
+}

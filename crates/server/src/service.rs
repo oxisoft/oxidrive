@@ -10,16 +10,21 @@ use oxisoft_drive_crypto::CryptoRng;
 use oxisoft_drive_crypto::sign::VerifyingKey;
 use oxisoft_drive_proto::api::{Commits, Head, Limits, Missing};
 use oxisoft_drive_proto::{
-    AccountId, CertificateHash, ChunkId, CollectionId, Commit, DeviceCertificate, DeviceList,
-    LeaseId, RecordSlot, Seq, Signed, verify_chain,
+    AccountId, CertificateHash, ChunkId, CollectionId, Commit, DeviceCertificate, DeviceId,
+    DeviceList, LeaseId, RecordSlot, Seq, Signed, verify_chain,
 };
 use oxisoft_drive_server_store::{
     AccountRow, AccountStatus, AppendOutcome, CollectionRow, MetaStore, NewAccount, NewChunk,
     NewCollection, NewLease, PreparedAppend, PreparedRecord, StoreError, StoredCertificate,
-    StoredDeviceList, StoredSlot,
+    StoredDeviceList, StoredEnvelope, StoredSlot,
 };
 
 use crate::blob::{BlobError, BlobKey, BlobStore};
+
+mod accounts;
+mod collections;
+
+pub use accounts::Caller;
 
 /// Milliseconds since the Unix epoch, as the service sees them.
 pub trait Clock: Send + Sync {
@@ -50,6 +55,16 @@ pub struct Settings {
     pub lease_ms: u64,
     /// Rows handled per batch in maintenance.
     pub batch: u32,
+    /// How long a sign-in challenge is valid.
+    pub challenge_ms: u64,
+    /// How long a session lasts.
+    pub session_ms: u64,
+    /// How long a pairing waits for approval.
+    pub pairing_ms: u64,
+    /// Quota of accounts created with an invite.
+    pub default_quota: u64,
+    /// Retention of new collections, in days (sync §7).
+    pub default_retention_days: u32,
 }
 
 impl Default for Settings {
@@ -64,6 +79,11 @@ impl Default for Settings {
             },
             lease_ms: 24 * 3_600_000,
             batch: 500,
+            challenge_ms: 60_000,
+            session_ms: 3_600_000,
+            pairing_ms: 600_000,
+            default_quota: u64::MAX,
+            default_retention_days: 30,
         }
     }
 }
@@ -80,6 +100,12 @@ pub enum ServiceError {
     /// The writing device isn't trusted by the account.
     #[error("device not trusted")]
     Untrusted,
+    /// No valid session, or a failed sign-in.
+    #[error("not signed in")]
+    Unauthorized,
+    /// Not allowed: an unusable invite, another account's pairing.
+    #[error("forbidden: {0}")]
+    Forbidden(String),
     /// Malformed, badly signed or inconsistent input.
     #[error("invalid: {0}")]
     Invalid(String),
@@ -122,6 +148,10 @@ fn decode<T: for<'b> minicbor::Decode<'b, ()>>(bytes: &[u8]) -> Result<T, Servic
 /// What a garbage collection did.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct GcReport {
+    /// Trashed collections emptied after their retention.
+    pub collections: u64,
+    /// Expired sessions, challenges and pairings dropped.
+    pub sign_ins: u64,
     /// Expired leases dropped.
     pub leases: u64,
     /// Chunks deleted.
@@ -209,6 +239,7 @@ where
             .create_account(&NewAccount {
                 id,
                 signing_key: signing_key.to_bytes().to_vec(),
+                kem_key: Vec::new(),
                 quota_bytes,
                 created_ms: self.clock.now_ms(),
             })
@@ -249,6 +280,21 @@ where
         list: &Signed<DeviceList>,
         certificates: &[Signed<DeviceCertificate>],
     ) -> Result<(), ServiceError> {
+        self.replace_device_list(account, expected, list, certificates, &[])
+            .await
+            .map(drop)
+    }
+
+    /// [`Service::put_device_list`], also storing `envelopes` and ending the sessions of
+    /// devices the new list no longer trusts. Returns the new list.
+    async fn replace_device_list(
+        &self,
+        account: AccountId,
+        expected: Option<u64>,
+        list: &Signed<DeviceList>,
+        certificates: &[Signed<DeviceCertificate>],
+        envelopes: &[StoredEnvelope],
+    ) -> Result<DeviceList, ServiceError> {
         let row = self.active_account(account).await?;
         let key = Self::account_key(&row)?;
         let new = list.verify(&key).map_err(invalid)?;
@@ -267,6 +313,13 @@ where
             ),
             None => None,
         };
+        // Not newer than the stored list: another device got there first (server API §4).
+        if previous
+            .as_ref()
+            .is_some_and(|previous| new.version <= previous.version)
+        {
+            return Err(ServiceError::Conflict(None));
+        }
         new.check_update(previous.as_ref()).map_err(invalid)?;
         let mut added = Vec::new();
         for signed in certificates {
@@ -299,17 +352,31 @@ where
                 })
             })
             .collect::<Result<Vec<_>, ServiceError>>()?;
-        let list = StoredDeviceList {
+        let stored_list = StoredDeviceList {
             version: new.version,
             signed: encode(list)?,
         };
+        let untrusted: Vec<DeviceId> = previous
+            .iter()
+            .flat_map(|previous| &previous.devices)
+            .map(|entry| entry.device)
+            .filter(|device| !new.is_trusted(device))
+            .collect();
         match self
             .meta
-            .put_device_list(account, expected, &list, &certificates)
+            .put_device_list(
+                account,
+                expected,
+                &stored_list,
+                &certificates,
+                envelopes,
+                &untrusted,
+            )
             .await
         {
             Err(StoreError::Conflict) => Err(ServiceError::Conflict(None)),
-            other => Ok(other?),
+            Err(error) => Err(error.into()),
+            Ok(()) => Ok(new),
         }
     }
 
@@ -335,6 +402,7 @@ where
                 config,
                 retention_days,
                 created_ms: self.clock.now_ms(),
+                key: None,
             })
             .await?;
         Ok(())
@@ -351,7 +419,7 @@ where
             .meta
             .collection(collection)
             .await?
-            .filter(|found| found.account == account)
+            .filter(|found| found.account == account && found.deleted_ms.is_none())
             .ok_or(ServiceError::NotFound)?;
         Ok((row, collection))
     }
@@ -651,18 +719,23 @@ where
         }
     }
 
-    /// Drops expired leases, then deletes chunks nothing references or leases: the row
-    /// first, then the object, so a crash leaves at most an orphan object (fsck reports it).
+    /// Empties trashed collections past their retention, drops expired sessions, pairings
+    /// and leases, then deletes chunks nothing references or leases: the row first, then
+    /// the object, so a crash leaves at most an orphan object (fsck reports it).
     ///
     /// # Errors
     ///
     /// Store failures.
     pub async fn collect_garbage(&self) -> Result<GcReport, ServiceError> {
         let now = self.clock.now_ms();
-        let mut report = GcReport {
-            leases: self.meta.drop_expired_leases(now).await?,
-            ..GcReport::default()
-        };
+        let mut report = GcReport::default();
+        for collection in self.meta.purgeable_collections(now).await? {
+            self.meta.purge_collection(collection).await?;
+            report.collections += 1;
+        }
+        report.sign_ins = self.meta.drop_expired_sessions(now).await?
+            + self.meta.drop_expired_pairings(now).await?;
+        report.leases = self.meta.drop_expired_leases(now).await?;
         loop {
             let garbage = self.meta.garbage(now, self.settings.batch).await?;
             if garbage.is_empty() {

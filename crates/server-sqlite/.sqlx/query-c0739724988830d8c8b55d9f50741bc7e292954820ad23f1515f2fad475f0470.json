@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "DELETE FROM commits WHERE collection = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": []
+  },
+  "hash": "c0739724988830d8c8b55d9f50741bc7e292954820ad23f1515f2fad475f0470"
+}

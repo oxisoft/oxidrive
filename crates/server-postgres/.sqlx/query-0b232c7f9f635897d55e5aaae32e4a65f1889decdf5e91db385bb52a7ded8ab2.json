@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "DELETE FROM lease_chunks WHERE lease IN (SELECT id FROM leases WHERE collection = $1)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Bytea"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "0b232c7f9f635897d55e5aaae32e4a65f1889decdf5e91db385bb52a7ded8ab2"
+}

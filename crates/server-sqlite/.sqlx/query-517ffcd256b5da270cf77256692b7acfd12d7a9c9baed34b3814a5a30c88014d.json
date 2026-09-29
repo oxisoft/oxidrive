@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO device_certificates (account, device, signed) VALUES (?, ?, ?)\n             ON CONFLICT DO NOTHING",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": []
+  },
+  "hash": "517ffcd256b5da270cf77256692b7acfd12d7a9c9baed34b3814a5a30c88014d"
+}

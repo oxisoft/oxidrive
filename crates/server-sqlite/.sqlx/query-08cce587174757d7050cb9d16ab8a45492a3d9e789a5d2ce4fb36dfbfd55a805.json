@@ -1,0 +1,21 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT MAX(epoch) AS \"newest: i64\" FROM envelopes WHERE account = ?",
+  "describe": {
+    "columns": [
+      {
+        "name": "newest: i64",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      true
+    ]
+  },
+  "hash": "08cce587174757d7050cb9d16ab8a45492a3d9e789a5d2ce4fb36dfbfd55a805"
+}

@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO device_certificates (account, device, signed) VALUES ($1, $2, $3)\n             ON CONFLICT DO NOTHING",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Bytea",
+        "Bytea",
+        "Bytea"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "2f425e921b56d45e61cb31273890f2ff3ad9dc4678dbf7130e39e2f3ff4dc93b"
+}

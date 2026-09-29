@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT signing_key, status, quota_bytes, used_bytes, created_ms FROM accounts\n             WHERE id = ?",
+  "query": "SELECT signing_key, kem_key, status, quota_bytes, used_bytes, created_ms\n             FROM accounts WHERE id = ?",
   "describe": {
     "columns": [
       {
@@ -15,8 +15,19 @@
         }
       },
       {
-        "name": "status",
+        "name": "kem_key",
         "ordinal": 1,
+        "type_info": "Blob",
+        "origin": {
+          "Table": {
+            "table": "accounts",
+            "name": "kem_key"
+          }
+        }
+      },
+      {
+        "name": "status",
+        "ordinal": 2,
         "type_info": "Text",
         "origin": {
           "Table": {
@@ -27,7 +38,7 @@
       },
       {
         "name": "quota_bytes",
-        "ordinal": 2,
+        "ordinal": 3,
         "type_info": "Integer",
         "origin": {
           "Table": {
@@ -38,7 +49,7 @@
       },
       {
         "name": "used_bytes",
-        "ordinal": 3,
+        "ordinal": 4,
         "type_info": "Integer",
         "origin": {
           "Table": {
@@ -49,7 +60,7 @@
       },
       {
         "name": "created_ms",
-        "ordinal": 4,
+        "ordinal": 5,
         "type_info": "Integer",
         "origin": {
           "Table": {
@@ -67,8 +78,9 @@
       false,
       false,
       false,
+      false,
       false
     ]
   },
-  "hash": "e0b6cc9483d876bceec1d998c07a375ff8d8eba2ea5bff23107618acdf1ff5e5"
+  "hash": "605d43b249be85b5970c11b4620448710a1993c8513b386adec487a62535bc78"
 }

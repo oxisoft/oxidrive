@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO challenges (device, nonce, expires_ms) VALUES ($1, $2, $3)\n             ON CONFLICT (device) DO UPDATE SET nonce = excluded.nonce,\n                                                expires_ms = excluded.expires_ms",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Bytea",
+        "Bytea",
+        "Int8"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "94fd4add426d33689849efe10e1183e7b8f533e5480f99db7463fb2e5b8a5c2f"
+}

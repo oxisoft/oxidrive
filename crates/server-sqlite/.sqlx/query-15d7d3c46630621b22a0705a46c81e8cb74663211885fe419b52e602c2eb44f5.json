@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO attestations (collection, device, signed) VALUES (?, ?, ?)\n             ON CONFLICT (collection, device) DO UPDATE SET signed = excluded.signed",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": []
+  },
+  "hash": "15d7d3c46630621b22a0705a46c81e8cb74663211885fe419b52e602c2eb44f5"
+}

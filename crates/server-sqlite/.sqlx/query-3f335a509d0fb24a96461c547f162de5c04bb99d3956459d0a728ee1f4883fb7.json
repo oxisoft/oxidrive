@@ -1,0 +1,38 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT device, signed FROM attestations WHERE collection = ? ORDER BY device",
+  "describe": {
+    "columns": [
+      {
+        "name": "device",
+        "ordinal": 0,
+        "type_info": "Blob",
+        "origin": {
+          "Table": {
+            "table": "attestations",
+            "name": "device"
+          }
+        }
+      },
+      {
+        "name": "signed",
+        "ordinal": 1,
+        "type_info": "Blob",
+        "origin": {
+          "Table": {
+            "table": "attestations",
+            "name": "signed"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false
+    ]
+  },
+  "hash": "3f335a509d0fb24a96461c547f162de5c04bb99d3956459d0a728ee1f4883fb7"
+}

@@ -1,0 +1,40 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT device, signed FROM attestations WHERE collection = $1 ORDER BY device",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "device",
+        "type_info": "Bytea",
+        "origin": {
+          "Table": {
+            "table": "attestations",
+            "name": "device"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "signed",
+        "type_info": "Bytea",
+        "origin": {
+          "Table": {
+            "table": "attestations",
+            "name": "signed"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Bytea"
+      ]
+    },
+    "nullable": [
+      false,
+      false
+    ]
+  },
+  "hash": "03e482b64938eefb4a56eca63bfbed84720d0155319972ce2ec81ae145f193c1"
+}

@@ -13,12 +13,13 @@
 use oxisoft_drive_crypto::hash::Digest;
 use oxisoft_drive_proto::api::Head;
 use oxisoft_drive_proto::{
-    AccountId, ChunkId, CollectionId, CommitHash, DeviceId, LeaseId, RecordHash, Seq,
+    AccountId, ChunkId, CollectionId, CommitHash, DeviceId, LeaseId, PairingId, RecordHash, Seq,
 };
 use oxisoft_drive_server_store::{
     AccountRow, AccountStatus, AppendOutcome, ChunkRow, CollectionRow, LeaseRow, MetaStore,
-    NewAccount, NewChunk, NewCollection, NewLease, PreparedAppend, RecordRef, StoreError,
-    StoredCertificate, StoredCommit, StoredDeviceList, StoredSlot,
+    NewAccount, NewChunk, NewCollection, NewLease, PairingRow, PreparedAppend, RecordRef,
+    SessionRow, StoreError, StoredAttestation, StoredCertificate, StoredCommit, StoredDeviceList,
+    StoredEnvelope, StoredSlot,
 };
 use sqlx::postgres::{PgPool, PgPoolOptions};
 use sqlx::{Postgres, Transaction};
@@ -169,32 +170,160 @@ async fn missing_locked(
     Ok(missing)
 }
 
-impl MetaStore for PostgresStore {
-    async fn create_account(&self, account: &NewAccount) -> Result<(), StoreError> {
-        let (id, quota, created) = (
-            account.id.as_bytes().as_slice(),
-            int(account.quota_bytes),
-            int(account.created_ms),
-        );
+fn collection_row(
+    id: &[u8],
+    account: &[u8],
+    config: Vec<u8>,
+    retention_days: i64,
+    created_ms: i64,
+    deleted_ms: Option<i64>,
+) -> Result<CollectionRow, StoreError> {
+    Ok(CollectionRow {
+        id: CollectionId::from_bytes(fixed(id)?),
+        account: AccountId::from_bytes(fixed(account)?),
+        config,
+        retention_days: u32::try_from(retention_days)
+            .map_err(|_| StoreError::Corrupt("retention days".into()))?,
+        created_ms: uint(created_ms)?,
+        deleted_ms: deleted_ms.map(uint).transpose()?,
+    })
+}
+
+fn envelope_row(
+    kind: i64,
+    epoch: i64,
+    device: &[u8],
+    collection: &[u8],
+    encoded: Vec<u8>,
+) -> Result<StoredEnvelope, StoreError> {
+    Ok(StoredEnvelope {
+        kind: u8::try_from(kind).map_err(|_| StoreError::Corrupt("envelope kind".into()))?,
+        epoch: u32::try_from(epoch).map_err(|_| StoreError::Corrupt("envelope epoch".into()))?,
+        device: (!device.is_empty())
+            .then(|| fixed(device).map(DeviceId::from_bytes))
+            .transpose()?,
+        collection: (!collection.is_empty())
+            .then(|| fixed(collection).map(CollectionId::from_bytes))
+            .transpose()?,
+        encoded,
+    })
+}
+
+async fn insert_account(
+    tx: &mut Transaction<'static, Postgres>,
+    account: &NewAccount,
+) -> Result<(), StoreError> {
+    let (id, quota, created) = (
+        account.id.as_bytes().as_slice(),
+        int(account.quota_bytes),
+        int(account.created_ms),
+    );
+    sqlx::query!(
+        "INSERT INTO accounts (id, signing_key, kem_key, status, quota_bytes, used_bytes,
+                               created_ms)
+         VALUES ($1, $2, $3, 'active', $4, 0, $5)",
+        id,
+        account.signing_key,
+        account.kem_key,
+        quota,
+        created
+    )
+    .execute(&mut **tx)
+    .await
+    .map_err(backend)?;
+    Ok(())
+}
+
+async fn write_list(
+    tx: &mut Transaction<'static, Postgres>,
+    account: AccountId,
+    list: &StoredDeviceList,
+) -> Result<(), StoreError> {
+    let (key, version) = (account.as_bytes().as_slice(), int(list.version));
+    sqlx::query!(
+        "INSERT INTO device_lists (account, version, signed) VALUES ($1, $2, $3)
+         ON CONFLICT (account) DO UPDATE SET version = excluded.version,
+                                             signed = excluded.signed",
+        key,
+        version,
+        list.signed
+    )
+    .execute(&mut **tx)
+    .await
+    .map_err(backend)?;
+    Ok(())
+}
+
+async fn insert_certificates(
+    tx: &mut Transaction<'static, Postgres>,
+    account: AccountId,
+    certificates: &[StoredCertificate],
+) -> Result<(), StoreError> {
+    let key = account.as_bytes().as_slice();
+    for certificate in certificates {
+        let device = certificate.device.as_bytes().as_slice();
         sqlx::query!(
-            "INSERT INTO accounts (id, signing_key, status, quota_bytes, used_bytes, created_ms)
-             VALUES ($1, $2, 'active', $3, 0, $4)",
-            id,
-            account.signing_key,
-            quota,
-            created
+            "INSERT INTO device_certificates (account, device, signed) VALUES ($1, $2, $3)
+             ON CONFLICT DO NOTHING",
+            key,
+            device,
+            certificate.signed
         )
-        .execute(&self.pool)
+        .execute(&mut **tx)
         .await
         .map_err(backend)?;
-        Ok(())
+    }
+    Ok(())
+}
+
+/// Stores envelopes; one already stored under the same address is replaced.
+async fn insert_envelopes(
+    tx: &mut Transaction<'static, Postgres>,
+    account: AccountId,
+    envelopes: &[StoredEnvelope],
+) -> Result<(), StoreError> {
+    let key = account.as_bytes().as_slice();
+    for envelope in envelopes {
+        let (kind, epoch) = (i64::from(envelope.kind), i64::from(envelope.epoch));
+        let device = envelope
+            .device
+            .map(|device| device.as_bytes().to_vec())
+            .unwrap_or_default();
+        let collection = envelope
+            .collection
+            .map(|collection| collection.as_bytes().to_vec())
+            .unwrap_or_default();
+        sqlx::query!(
+            "INSERT INTO envelopes (account, kind, epoch, device, collection, encoded)
+             VALUES ($1, $2, $3, $4, $5, $6)
+             ON CONFLICT (account, kind, epoch, device, collection)
+             DO UPDATE SET encoded = excluded.encoded",
+            key,
+            kind,
+            epoch,
+            device,
+            collection,
+            envelope.encoded
+        )
+        .execute(&mut **tx)
+        .await
+        .map_err(backend)?;
+    }
+    Ok(())
+}
+
+impl MetaStore for PostgresStore {
+    async fn create_account(&self, account: &NewAccount) -> Result<(), StoreError> {
+        let mut tx = self.begin().await?;
+        insert_account(&mut tx, account).await?;
+        tx.commit().await.map_err(backend)
     }
 
     async fn account(&self, id: AccountId) -> Result<Option<AccountRow>, StoreError> {
         let key = id.as_bytes().as_slice();
         let row = sqlx::query!(
-            "SELECT signing_key, status, quota_bytes, used_bytes, created_ms FROM accounts
-             WHERE id = $1",
+            "SELECT signing_key, kem_key, status, quota_bytes, used_bytes, created_ms
+             FROM accounts WHERE id = $1",
             key
         )
         .fetch_optional(&self.pool)
@@ -204,6 +333,7 @@ impl MetaStore for PostgresStore {
             Ok(AccountRow {
                 id,
                 signing_key: row.signing_key,
+                kem_key: row.kem_key,
                 status: status(&row.status)?,
                 quota_bytes: uint(row.quota_bytes)?,
                 used_bytes: uint(row.used_bytes)?,
@@ -219,6 +349,8 @@ impl MetaStore for PostgresStore {
         expected: Option<u64>,
         list: &StoredDeviceList,
         certificates: &[StoredCertificate],
+        envelopes: &[StoredEnvelope],
+        revoked: &[DeviceId],
     ) -> Result<(), StoreError> {
         let key = account.as_bytes().as_slice();
         let version = int(list.version);
@@ -255,14 +387,14 @@ impl MetaStore for PostgresStore {
         if replaced == 0 {
             return Err(StoreError::Conflict);
         }
-        for certificate in certificates {
-            let device = certificate.device.as_bytes().as_slice();
+        insert_certificates(&mut tx, account, certificates).await?;
+        insert_envelopes(&mut tx, account, envelopes).await?;
+        for device in revoked {
+            let device = device.as_bytes().as_slice();
             sqlx::query!(
-                "INSERT INTO device_certificates (account, device, signed) VALUES ($1, $2, $3)
-                 ON CONFLICT DO NOTHING",
+                "DELETE FROM sessions WHERE account = $1 AND device = $2",
                 key,
-                device,
-                certificate.signed
+                device
             )
             .execute(&mut *tx)
             .await
@@ -318,6 +450,7 @@ impl MetaStore for PostgresStore {
             i64::from(collection.retention_days),
             int(collection.created_ms),
         );
+        let mut tx = self.begin().await?;
         sqlx::query!(
             "INSERT INTO collections (id, account, config, retention_days, created_ms)
              VALUES ($1, $2, $3, $4, $5)",
@@ -327,30 +460,32 @@ impl MetaStore for PostgresStore {
             retention,
             created
         )
-        .execute(&self.pool)
+        .execute(&mut *tx)
         .await
         .map_err(backend)?;
-        Ok(())
+        insert_envelopes(&mut tx, collection.account, collection.key.as_slice()).await?;
+        tx.commit().await.map_err(backend)
     }
 
     async fn collection(&self, id: CollectionId) -> Result<Option<CollectionRow>, StoreError> {
         let key = id.as_bytes().as_slice();
         let row = sqlx::query!(
-            "SELECT account, config, retention_days, created_ms FROM collections WHERE id = $1",
+            "SELECT account, config, retention_days, created_ms, deleted_ms
+             FROM collections WHERE id = $1",
             key
         )
         .fetch_optional(&self.pool)
         .await
         .map_err(backend)?;
         row.map(|row| {
-            Ok(CollectionRow {
-                id,
-                account: AccountId::from_bytes(fixed(&row.account)?),
-                config: row.config,
-                retention_days: u32::try_from(row.retention_days)
-                    .map_err(|_| StoreError::Corrupt("retention days".into()))?,
-                created_ms: uint(row.created_ms)?,
-            })
+            collection_row(
+                id.as_bytes(),
+                &row.account,
+                row.config,
+                row.retention_days,
+                row.created_ms,
+                row.deleted_ms,
+            )
         })
         .transpose()
     }
@@ -853,6 +988,472 @@ impl MetaStore for PostgresStore {
                     row.size,
                     row.stored_ms,
                 )
+            })
+            .collect()
+    }
+
+    async fn certificates(&self, account: AccountId) -> Result<Vec<StoredCertificate>, StoreError> {
+        let key = account.as_bytes().as_slice();
+        let rows = sqlx::query!(
+            "SELECT device, signed FROM device_certificates WHERE account = $1 ORDER BY device",
+            key
+        )
+        .fetch_all(&self.pool)
+        .await
+        .map_err(backend)?;
+        rows.into_iter()
+            .map(|row| {
+                Ok(StoredCertificate {
+                    device: DeviceId::from_bytes(fixed(&row.device)?),
+                    signed: row.signed,
+                })
+            })
+            .collect()
+    }
+
+    async fn account_of_device(&self, device: DeviceId) -> Result<Option<AccountId>, StoreError> {
+        let key = device.as_bytes().as_slice();
+        let account = sqlx::query_scalar!(
+            "SELECT account FROM device_certificates WHERE device = $1 LIMIT 1",
+            key
+        )
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(backend)?;
+        account
+            .map(|account| fixed(&account).map(AccountId::from_bytes))
+            .transpose()
+    }
+
+    async fn create_invite(&self, hash: [u8; 32], expires_ms: u64) -> Result<(), StoreError> {
+        let (key, expires) = (hash.as_slice(), int(expires_ms));
+        sqlx::query!(
+            "INSERT INTO invites (hash, expires_ms, used_ms) VALUES ($1, $2, NULL)",
+            key,
+            expires
+        )
+        .execute(&self.pool)
+        .await
+        .map_err(backend)?;
+        Ok(())
+    }
+
+    async fn create_account_by_invite(
+        &self,
+        invite: [u8; 32],
+        now_ms: u64,
+        account: &NewAccount,
+        list: &StoredDeviceList,
+        certificate: &StoredCertificate,
+        envelopes: &[StoredEnvelope],
+    ) -> Result<(), StoreError> {
+        let (key, now) = (invite.as_slice(), int(now_ms));
+        let mut tx = self.begin().await?;
+        let used = sqlx::query!(
+            "UPDATE invites SET used_ms = $1 WHERE hash = $2 AND used_ms IS NULL AND expires_ms > $3",
+            now,
+            key,
+            now
+        )
+        .execute(&mut *tx)
+        .await
+        .map_err(backend)?
+        .rows_affected();
+        if used == 0 {
+            return Err(StoreError::NotFound);
+        }
+        insert_account(&mut tx, account).await?;
+        write_list(&mut tx, account.id, list).await?;
+        insert_certificates(&mut tx, account.id, std::slice::from_ref(certificate)).await?;
+        insert_envelopes(&mut tx, account.id, envelopes).await?;
+        tx.commit().await.map_err(backend)
+    }
+
+    async fn put_challenge(
+        &self,
+        device: DeviceId,
+        nonce: [u8; 32],
+        expires_ms: u64,
+    ) -> Result<(), StoreError> {
+        let (key, nonce, expires) = (
+            device.as_bytes().as_slice(),
+            nonce.as_slice(),
+            int(expires_ms),
+        );
+        sqlx::query!(
+            "INSERT INTO challenges (device, nonce, expires_ms) VALUES ($1, $2, $3)
+             ON CONFLICT (device) DO UPDATE SET nonce = excluded.nonce,
+                                                expires_ms = excluded.expires_ms",
+            key,
+            nonce,
+            expires
+        )
+        .execute(&self.pool)
+        .await
+        .map_err(backend)?;
+        Ok(())
+    }
+
+    async fn take_challenge(
+        &self,
+        device: DeviceId,
+    ) -> Result<Option<([u8; 32], u64)>, StoreError> {
+        let key = device.as_bytes().as_slice();
+        let row = sqlx::query!(
+            "DELETE FROM challenges WHERE device = $1 RETURNING nonce, expires_ms",
+            key
+        )
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(backend)?;
+        row.map(|row| Ok((fixed(&row.nonce)?, uint(row.expires_ms)?)))
+            .transpose()
+    }
+
+    async fn create_session(&self, hash: [u8; 32], session: &SessionRow) -> Result<(), StoreError> {
+        let (key, account, device, expires) = (
+            hash.as_slice(),
+            session.account.as_bytes().as_slice(),
+            session.device.as_bytes().as_slice(),
+            int(session.expires_ms),
+        );
+        sqlx::query!(
+            "INSERT INTO sessions (hash, account, device, expires_ms) VALUES ($1, $2, $3, $4)",
+            key,
+            account,
+            device,
+            expires
+        )
+        .execute(&self.pool)
+        .await
+        .map_err(backend)?;
+        Ok(())
+    }
+
+    async fn session(&self, hash: [u8; 32]) -> Result<Option<SessionRow>, StoreError> {
+        let key = hash.as_slice();
+        let row = sqlx::query!(
+            "SELECT account, device, expires_ms FROM sessions WHERE hash = $1",
+            key
+        )
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(backend)?;
+        row.map(|row| {
+            Ok(SessionRow {
+                account: AccountId::from_bytes(fixed(&row.account)?),
+                device: DeviceId::from_bytes(fixed(&row.device)?),
+                expires_ms: uint(row.expires_ms)?,
+            })
+        })
+        .transpose()
+    }
+
+    async fn drop_expired_sessions(&self, now_ms: u64) -> Result<u64, StoreError> {
+        let now = int(now_ms);
+        let mut tx = self.begin().await?;
+        let sessions = sqlx::query!("DELETE FROM sessions WHERE expires_ms <= $1", now)
+            .execute(&mut *tx)
+            .await
+            .map_err(backend)?
+            .rows_affected();
+        let challenges = sqlx::query!("DELETE FROM challenges WHERE expires_ms <= $1", now)
+            .execute(&mut *tx)
+            .await
+            .map_err(backend)?
+            .rows_affected();
+        tx.commit().await.map_err(backend)?;
+        Ok(sessions + challenges)
+    }
+
+    async fn envelopes(&self, account: AccountId) -> Result<Vec<StoredEnvelope>, StoreError> {
+        let key = account.as_bytes().as_slice();
+        let rows = sqlx::query!(
+            "SELECT kind, epoch, device, collection, encoded FROM envelopes WHERE account = $1
+             ORDER BY kind, epoch, device, collection",
+            key
+        )
+        .fetch_all(&self.pool)
+        .await
+        .map_err(backend)?;
+        rows.into_iter()
+            .map(|row| {
+                envelope_row(
+                    row.kind,
+                    row.epoch,
+                    &row.device,
+                    &row.collection,
+                    row.encoded,
+                )
+            })
+            .collect()
+    }
+
+    async fn add_epoch(
+        &self,
+        account: AccountId,
+        epoch: u32,
+        envelopes: &[StoredEnvelope],
+    ) -> Result<(), StoreError> {
+        let key = account.as_bytes().as_slice();
+        let mut tx = self.begin().await?;
+        let newest = sqlx::query_scalar!(
+            r#"SELECT MAX(epoch) AS "newest: i64" FROM envelopes WHERE account = $1"#,
+            key
+        )
+        .fetch_one(&mut *tx)
+        .await
+        .map_err(backend)?;
+        if newest != Some(i64::from(epoch) - 1) {
+            return Err(StoreError::Conflict);
+        }
+        insert_envelopes(&mut tx, account, envelopes).await?;
+        tx.commit().await.map_err(backend)
+    }
+
+    async fn collections(&self, account: AccountId) -> Result<Vec<CollectionRow>, StoreError> {
+        let key = account.as_bytes().as_slice();
+        let rows = sqlx::query!(
+            "SELECT id, account, config, retention_days, created_ms, deleted_ms FROM collections
+             WHERE account = $1 AND deleted_ms IS NULL ORDER BY id",
+            key
+        )
+        .fetch_all(&self.pool)
+        .await
+        .map_err(backend)?;
+        rows.into_iter()
+            .map(|row| {
+                collection_row(
+                    &row.id,
+                    &row.account,
+                    row.config,
+                    row.retention_days,
+                    row.created_ms,
+                    row.deleted_ms,
+                )
+            })
+            .collect()
+    }
+
+    async fn update_collection(
+        &self,
+        id: CollectionId,
+        retention_days: Option<u32>,
+        config: Option<&[u8]>,
+    ) -> Result<(), StoreError> {
+        let key = id.as_bytes().as_slice();
+        let retention = retention_days.map(i64::from);
+        let changed = sqlx::query!(
+            "UPDATE collections SET retention_days = COALESCE($1, retention_days),
+                                    config = COALESCE($2, config)
+             WHERE id = $3",
+            retention,
+            config,
+            key
+        )
+        .execute(&self.pool)
+        .await
+        .map_err(backend)?
+        .rows_affected();
+        if changed == 0 {
+            return Err(StoreError::NotFound);
+        }
+        Ok(())
+    }
+
+    async fn delete_collection(&self, id: CollectionId, now_ms: u64) -> Result<(), StoreError> {
+        let (key, now) = (id.as_bytes().as_slice(), int(now_ms));
+        let changed = sqlx::query!(
+            "UPDATE collections SET deleted_ms = $1 WHERE id = $2 AND deleted_ms IS NULL",
+            now,
+            key
+        )
+        .execute(&self.pool)
+        .await
+        .map_err(backend)?
+        .rows_affected();
+        if changed == 0 {
+            return Err(StoreError::NotFound);
+        }
+        Ok(())
+    }
+
+    async fn collection_usage(&self, id: CollectionId) -> Result<u64, StoreError> {
+        let key = id.as_bytes().as_slice();
+        let used = sqlx::query_scalar!(
+            r#"SELECT COALESCE(SUM(size), 0)::BIGINT AS "used!: i64" FROM chunks WHERE collection = $1"#,
+            key
+        )
+        .fetch_one(&self.pool)
+        .await
+        .map_err(backend)?;
+        uint(used)
+    }
+
+    async fn purgeable_collections(&self, now_ms: u64) -> Result<Vec<CollectionId>, StoreError> {
+        let now = int(now_ms);
+        let ids = sqlx::query_scalar!(
+            "SELECT id FROM collections
+             WHERE deleted_ms IS NOT NULL AND purged = 0
+               AND deleted_ms + retention_days * 86400000 <= $1
+             ORDER BY id",
+            now
+        )
+        .fetch_all(&self.pool)
+        .await
+        .map_err(backend)?;
+        ids.iter()
+            .map(|id| fixed(id).map(CollectionId::from_bytes))
+            .collect()
+    }
+
+    async fn purge_collection(&self, id: CollectionId) -> Result<(), StoreError> {
+        let key = id.as_bytes().as_slice();
+        let mut tx = self.begin().await?;
+        sqlx::query!("DELETE FROM record_chunks WHERE collection = $1", key)
+            .execute(&mut *tx)
+            .await
+            .map_err(backend)?;
+        sqlx::query!("DELETE FROM records WHERE collection = $1", key)
+            .execute(&mut *tx)
+            .await
+            .map_err(backend)?;
+        sqlx::query!("DELETE FROM commits WHERE collection = $1", key)
+            .execute(&mut *tx)
+            .await
+            .map_err(backend)?;
+        sqlx::query!(
+            "DELETE FROM lease_chunks WHERE lease IN (SELECT id FROM leases WHERE collection = $1)",
+            key
+        )
+        .execute(&mut *tx)
+        .await
+        .map_err(backend)?;
+        sqlx::query!("DELETE FROM leases WHERE collection = $1", key)
+            .execute(&mut *tx)
+            .await
+            .map_err(backend)?;
+        sqlx::query!("DELETE FROM attestations WHERE collection = $1", key)
+            .execute(&mut *tx)
+            .await
+            .map_err(backend)?;
+        sqlx::query!("DELETE FROM envelopes WHERE collection = $1", key)
+            .execute(&mut *tx)
+            .await
+            .map_err(backend)?;
+        sqlx::query!("UPDATE collections SET purged = 1 WHERE id = $1", key)
+            .execute(&mut *tx)
+            .await
+            .map_err(backend)?;
+        tx.commit().await.map_err(backend)
+    }
+
+    async fn create_pairing(&self, pairing: &PairingRow) -> Result<(), StoreError> {
+        let (id, expires) = (pairing.id.as_bytes().as_slice(), int(pairing.expires_ms));
+        sqlx::query!(
+            "INSERT INTO pairings (id, request, expires_ms, approval) VALUES ($1, $2, $3, $4)",
+            id,
+            pairing.request,
+            expires,
+            pairing.approval
+        )
+        .execute(&self.pool)
+        .await
+        .map_err(backend)?;
+        Ok(())
+    }
+
+    async fn pairing(&self, id: PairingId) -> Result<Option<PairingRow>, StoreError> {
+        let key = id.as_bytes().as_slice();
+        let row = sqlx::query!(
+            "SELECT request, expires_ms, approval FROM pairings WHERE id = $1",
+            key
+        )
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(backend)?;
+        row.map(|row| {
+            Ok(PairingRow {
+                id,
+                request: row.request,
+                expires_ms: uint(row.expires_ms)?,
+                approval: row.approval,
+            })
+        })
+        .transpose()
+    }
+
+    async fn approve_pairing(
+        &self,
+        id: PairingId,
+        approval: &[u8],
+        now_ms: u64,
+    ) -> Result<bool, StoreError> {
+        let (key, now) = (id.as_bytes().as_slice(), int(now_ms));
+        let changed = sqlx::query!(
+            "UPDATE pairings SET approval = $1
+             WHERE id = $2 AND approval IS NULL AND expires_ms > $3",
+            approval,
+            key,
+            now
+        )
+        .execute(&self.pool)
+        .await
+        .map_err(backend)?
+        .rows_affected();
+        Ok(changed == 1)
+    }
+
+    async fn drop_expired_pairings(&self, now_ms: u64) -> Result<u64, StoreError> {
+        let now = int(now_ms);
+        let dropped = sqlx::query!("DELETE FROM pairings WHERE expires_ms <= $1", now)
+            .execute(&self.pool)
+            .await
+            .map_err(backend)?
+            .rows_affected();
+        Ok(dropped)
+    }
+
+    async fn put_attestation(
+        &self,
+        collection: CollectionId,
+        attestation: &StoredAttestation,
+    ) -> Result<(), StoreError> {
+        let (key, device) = (
+            collection.as_bytes().as_slice(),
+            attestation.device.as_bytes().as_slice(),
+        );
+        sqlx::query!(
+            "INSERT INTO attestations (collection, device, signed) VALUES ($1, $2, $3)
+             ON CONFLICT (collection, device) DO UPDATE SET signed = excluded.signed",
+            key,
+            device,
+            attestation.signed
+        )
+        .execute(&self.pool)
+        .await
+        .map_err(backend)?;
+        Ok(())
+    }
+
+    async fn attestations(
+        &self,
+        collection: CollectionId,
+    ) -> Result<Vec<StoredAttestation>, StoreError> {
+        let key = collection.as_bytes().as_slice();
+        let rows = sqlx::query!(
+            "SELECT device, signed FROM attestations WHERE collection = $1 ORDER BY device",
+            key
+        )
+        .fetch_all(&self.pool)
+        .await
+        .map_err(backend)?;
+        rows.into_iter()
+            .map(|row| {
+                Ok(StoredAttestation {
+                    device: DeviceId::from_bytes(fixed(&row.device)?),
+                    signed: row.signed,
+                })
             })
             .collect()
     }

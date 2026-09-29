@@ -1,0 +1,28 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT account FROM device_certificates WHERE device = $1 LIMIT 1",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "account",
+        "type_info": "Bytea",
+        "origin": {
+          "Table": {
+            "table": "device_certificates",
+            "name": "account"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Bytea"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "060adcb33e6fe3c527adb789a741013c52ab0fbd6d3011b34d29f3c7d572ec6d"
+}

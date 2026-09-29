@@ -1,0 +1,76 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT account, config, retention_days, created_ms, deleted_ms\n             FROM collections WHERE id = $1",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "account",
+        "type_info": "Bytea",
+        "origin": {
+          "Table": {
+            "table": "collections",
+            "name": "account"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "config",
+        "type_info": "Bytea",
+        "origin": {
+          "Table": {
+            "table": "collections",
+            "name": "config"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "retention_days",
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "collections",
+            "name": "retention_days"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "created_ms",
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "collections",
+            "name": "created_ms"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "deleted_ms",
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "collections",
+            "name": "deleted_ms"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Bytea"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      true
+    ]
+  },
+  "hash": "97386768b7ec8c58284c8e77d70f5b3321b3f988c2afabf72857c5316553f7b7"
+}

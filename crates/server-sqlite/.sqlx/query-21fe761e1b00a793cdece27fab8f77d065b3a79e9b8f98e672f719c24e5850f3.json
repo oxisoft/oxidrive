@@ -1,11 +1,22 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT account, config, retention_days, created_ms FROM collections WHERE id = ?",
+  "query": "SELECT id, account, config, retention_days, created_ms, deleted_ms FROM collections\n             WHERE account = ? AND deleted_ms IS NULL ORDER BY id",
   "describe": {
     "columns": [
       {
-        "name": "account",
+        "name": "id",
         "ordinal": 0,
+        "type_info": "Blob",
+        "origin": {
+          "Table": {
+            "table": "collections",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "name": "account",
+        "ordinal": 1,
         "type_info": "Blob",
         "origin": {
           "Table": {
@@ -16,7 +27,7 @@
       },
       {
         "name": "config",
-        "ordinal": 1,
+        "ordinal": 2,
         "type_info": "Blob",
         "origin": {
           "Table": {
@@ -27,7 +38,7 @@
       },
       {
         "name": "retention_days",
-        "ordinal": 2,
+        "ordinal": 3,
         "type_info": "Integer",
         "origin": {
           "Table": {
@@ -38,12 +49,23 @@
       },
       {
         "name": "created_ms",
-        "ordinal": 3,
+        "ordinal": 4,
         "type_info": "Integer",
         "origin": {
           "Table": {
             "table": "collections",
             "name": "created_ms"
+          }
+        }
+      },
+      {
+        "name": "deleted_ms",
+        "ordinal": 5,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "collections",
+            "name": "deleted_ms"
           }
         }
       }
@@ -55,8 +77,10 @@
       false,
       false,
       false,
-      false
+      false,
+      false,
+      true
     ]
   },
-  "hash": "ff02b1c1ed9c589fb900fb2ea74f6fbedd5a6daf7ed452476c46b45ca251e79a"
+  "hash": "21fe761e1b00a793cdece27fab8f77d065b3a79e9b8f98e672f719c24e5850f3"
 }

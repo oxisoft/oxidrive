@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO device_lists (account, version, signed) VALUES ($1, $2, $3)\n         ON CONFLICT (account) DO UPDATE SET version = excluded.version,\n                                             signed = excluded.signed",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Bytea",
+        "Int8",
+        "Bytea"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "253652770a1d9256141fd9b636845af087af50755e1222dd4129bd0259f34214"
+}

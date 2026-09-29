@@ -11,16 +11,28 @@ keywords.workspace = true
 categories.workspace = true
 
 [dependencies]
+axum.workspace = true
+governor.workspace = true
 minicbor.workspace = true
 oxisoft-drive-chunking.workspace = true
 oxisoft-drive-crypto.workspace = true
 oxisoft-drive-proto.workspace = true
 oxisoft-drive-server-store.workspace = true
+rand_core.workspace = true
 tempfile.workspace = true
 thiserror.workspace = true
-tokio = { workspace = true, features = ["rt"] }
+tokio = { workspace = true, features = ["macros", "rt", "sync", "time"] }
+tower-http.workspace = true
 
 [dev-dependencies]
+axum = { workspace = true, features = ["tokio"] }
+futures-util.workspace = true
+oxisoft-drive-server-postgres.workspace = true
+reqwest.workspace = true
+sqlx = { workspace = true, features = ["postgres"] }
+tempfile.workspace = true
+tokio-tungstenite.workspace = true
+tower.workspace = true
 oxisoft-drive-server-sqlite.workspace = true
 rand_chacha.workspace = true
 rand_core.workspace = true

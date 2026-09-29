@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE collections SET retention_days = COALESCE($1, retention_days),\n                                    config = COALESCE($2, config)\n             WHERE id = $3",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int8",
+        "Bytea",
+        "Bytea"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "1f8fe78c6c75508aa325a10f138b2c884a8b572bd6763b65141656fcf24b5965"
+}

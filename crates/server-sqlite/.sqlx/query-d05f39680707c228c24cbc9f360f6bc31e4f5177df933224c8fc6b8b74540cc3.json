@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO pairings (id, request, expires_ms, approval) VALUES (?, ?, ?, ?)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 4
+    },
+    "nullable": []
+  },
+  "hash": "d05f39680707c228c24cbc9f360f6bc31e4f5177df933224c8fc6b8b74540cc3"
+}
