@@ -248,6 +248,10 @@ fn sync_dir(dir: &Path) -> io::Result<()> {
 }
 
 #[cfg(not(unix))]
+#[expect(
+    clippy::unnecessary_wraps,
+    reason = "the same signature as the Unix version, which can fail"
+)]
 fn sync_dir(_dir: &Path) -> io::Result<()> {
     Ok(())
 }
