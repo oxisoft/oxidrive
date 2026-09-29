@@ -8,8 +8,14 @@
 //! | `test` | lints and tests only (macOS and Windows CI jobs) |
 //! | `deny` | the dependency advisory, licence and source check (daily CI job) |
 //! | `sim`  | the deterministic simulator, optimised: `--seed N` replays a run, `--runs K [--from S]` searches (options as `oxidrive-sim`) |
+//! | `sqlx-prepare` | rewrites the store crates' compile-time query data (`.sqlx/`) |
+//!
+//! Builds use the committed query data (`SQLX_OFFLINE=true`). `ci` needs a PostgreSQL
+//! server: CI sets `OXIDRIVE_TEST_POSTGRES_URL`; locally a throwaway one is started with
+//! podman and removed afterwards.
 
 mod coverage;
+mod db;
 
 use std::env;
 use std::ffi::OsString;
@@ -19,7 +25,7 @@ use std::io;
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode};
 
-const USAGE: &str = "usage: cargo xtask <ci | test | deny | sim [options]>";
+const USAGE: &str = "usage: cargo xtask <ci | test | deny | sim [options] | sqlx-prepare>";
 const COVERAGE_JSON: &str = "target/llvm-cov/summary.json";
 
 fn main() -> ExitCode {
@@ -30,6 +36,8 @@ fn main() -> ExitCode {
         Some("test") => test(&root),
         Some("deny") => deny(&root),
         Some("sim") => sim(&root, &env::args().skip(2).collect::<Vec<_>>()),
+        Some("sqlx-prepare") => db::Postgres::start()
+            .and_then(|postgres| db::sqlx_prepare(&root, &postgres, db::Prepare::Write)),
         _ => Err(Error::Usage),
     };
     match result {
@@ -55,6 +63,8 @@ fn ci(root: &Path) -> Result<(), Error> {
         &[("RUST_LOG", "warn")],
     )?;
     clippy(root)?;
+    let postgres = db::Postgres::start()?;
+    db::sqlx_prepare(root, &postgres, db::Prepare::Check)?;
     cargo(
         root,
         "doc",
@@ -67,7 +77,8 @@ fn ci(root: &Path) -> Result<(), Error> {
         ],
         &[("RUSTDOCFLAGS", "-D warnings")],
     )?;
-    coverage(root)?;
+    coverage(root, &postgres.url)?;
+    drop(postgres);
     doctests(root)?;
     deny(root)?;
     run(root, "machete", "cargo-machete", &[], &[])?;
@@ -76,7 +87,8 @@ fn ci(root: &Path) -> Result<(), Error> {
     zizmor(root)
 }
 
-/// Lints and tests, for the macOS and Windows CI jobs.
+/// Lints and tests, for the macOS and Windows CI jobs: everything but PostgreSQL, which
+/// only the Linux job provides (server crate G3).
 fn test(root: &Path) -> Result<(), Error> {
     clippy(root)?;
     cargo(
@@ -88,6 +100,8 @@ fn test(root: &Path) -> Result<(), Error> {
             "--workspace",
             "--all-features",
             "--locked",
+            "--filterset",
+            "not (package(oxisoft-drive-server-postgres) | test(/postgres/))",
         ],
         &[("NEXTEST_PROFILE", "ci")],
     )?;
@@ -142,7 +156,7 @@ fn doctests(root: &Path) -> Result<(), Error> {
 }
 
 /// Runs the tests under coverage instrumentation, then applies the per-crate gate.
-fn coverage(root: &Path) -> Result<(), Error> {
+fn coverage(root: &Path, postgres_url: &str) -> Result<(), Error> {
     let path = root.join(COVERAGE_JSON);
     if let Some(dir) = path.parent() {
         fs::create_dir_all(dir).map_err(|source| Error::Io {
@@ -165,7 +179,10 @@ fn coverage(root: &Path) -> Result<(), Error> {
             "--output-path",
             COVERAGE_JSON,
         ],
-        &[("NEXTEST_PROFILE", "ci")],
+        &[
+            ("NEXTEST_PROFILE", "ci"),
+            (db::POSTGRES_URL_VAR, postgres_url),
+        ],
     )?;
     let text = fs::read_to_string(&path).map_err(|source| Error::Io {
         what: format!("reading {}", path.display()),
@@ -198,9 +215,12 @@ fn zizmor(root: &Path) -> Result<(), Error> {
     run(root, "zizmor", "zizmor", &args, &[])
 }
 
+/// Runs cargo with the committed query data (`envs` may override that).
 fn cargo(root: &Path, name: &str, args: &[&str], envs: &[(&str, &str)]) -> Result<(), Error> {
     let program = env::var_os("CARGO").unwrap_or_else(|| OsString::from("cargo"));
-    run(root, name, program, args, envs)
+    let mut all = vec![("SQLX_OFFLINE", "true")];
+    all.extend_from_slice(envs);
+    run(root, name, program, args, &all)
 }
 
 fn run(

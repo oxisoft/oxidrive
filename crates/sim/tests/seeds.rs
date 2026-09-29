@@ -4,7 +4,7 @@
 
 #![cfg(test)]
 
-use oxisoft_drive_sim::{Config, run};
+use oxisoft_drive_sim::{Backend, Config, run, run_on};
 
 const CONFIG: Config = Config {
     epochs: 4,
@@ -132,6 +132,29 @@ fn regressions() {
     for (seed, config, found) in REGRESSIONS {
         if let Err(failure) = run(seed, config) {
             panic!("regression ({found}): {failure}");
+        }
+    }
+}
+
+/// Seeds on the real server with SQLite (server storage H3).
+#[test]
+fn seeds_on_sqlite() {
+    for seed in 0..10 {
+        if let Err(failure) = run_on(seed, CONFIG, Backend::Sqlite) {
+            panic!("{failure}");
+        }
+    }
+}
+
+/// Seeds on the real server with PostgreSQL (server storage H3). Needs
+/// `OXIDRIVE_TEST_POSTGRES_URL`; fails without it rather than skipping (server crate G3).
+#[test]
+fn seeds_on_postgres() {
+    let url = std::env::var("OXIDRIVE_TEST_POSTGRES_URL")
+        .expect("OXIDRIVE_TEST_POSTGRES_URL must point at a PostgreSQL server for this test");
+    for seed in 0..10 {
+        if let Err(failure) = run_on(seed, CONFIG, Backend::Postgres(&url)) {
+            panic!("{failure}");
         }
     }
 }

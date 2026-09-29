@@ -104,7 +104,7 @@ fn a_server_serving_wrong_chunks_is_caught() {
     a.fs.write(&path("x"), &[b'x'; 3000]);
     a.fs.write(&path("y"), &[b'y'; 3000]);
     a.sync().unwrap();
-    world.server.swap_chunks(world.collection);
+    world.server.inner().swap_chunks(world.collection);
     assert!(matches!(b.sync(), Err(EngineError::Chunk(_))));
     assert!(b.tree().is_empty(), "nothing written from bad data");
     assert!(

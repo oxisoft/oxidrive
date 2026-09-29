@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO leases (id, collection, expires_ms) VALUES (?, ?, ?)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": []
+  },
+  "hash": "03c66d5ac85dd088afbb8cc337c68b1b93db8e580367e974e8fd845236dac68e"
+}

@@ -6,13 +6,24 @@
 //! ```
 //!
 //! Without `--from`, a search starts at a seed taken from the current time, printed first.
+//! `--server sqlite` or `--server postgres` runs on the real server's rules and stores
+//! (PostgreSQL at `OXIDRIVE_TEST_POSTGRES_URL`) instead of the in-memory server.
 
 use std::process::ExitCode;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use oxisoft_drive_sim::{Config, run};
+use oxisoft_drive_sim::{Backend, Config, run_on};
 
-const USAGE: &str = "usage: oxidrive-sim [--seed N | --runs K [--from S]] [--epochs E] [--ticks T]";
+const USAGE: &str = "usage: oxidrive-sim [--seed N | --runs K [--from S]] [--epochs E] \
+                     [--ticks T] [--server memory|sqlite|postgres]";
+
+/// Which server to run on.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Server {
+    Memory,
+    Sqlite,
+    Postgres,
+}
 
 #[derive(Debug, PartialEq, Eq)]
 struct Args {
@@ -20,6 +31,7 @@ struct Args {
     runs: u64,
     from: Option<u64>,
     config: Config,
+    server: Server,
 }
 
 fn parse(mut args: impl Iterator<Item = String>) -> Result<Args, String> {
@@ -28,9 +40,19 @@ fn parse(mut args: impl Iterator<Item = String>) -> Result<Args, String> {
         runs: 1,
         from: None,
         config: Config::default(),
+        server: Server::Memory,
     };
     while let Some(flag) = args.next() {
         let value = args.next().ok_or_else(|| format!("{flag} needs a value"))?;
+        if flag == "--server" {
+            parsed.server = match value.as_str() {
+                "memory" => Server::Memory,
+                "sqlite" => Server::Sqlite,
+                "postgres" => Server::Postgres,
+                other => return Err(format!("--server: unknown server {other}")),
+            };
+            continue;
+        }
         let number: u64 = value
             .parse()
             .map_err(|_| format!("{flag}: not a number: {value}"))?;
@@ -71,8 +93,14 @@ fn main() -> ExitCode {
         "{runs} run(s) from seed {first}, {} epochs of {} ticks",
         args.config.epochs, args.config.ticks
     ));
+    let url = std::env::var("OXIDRIVE_TEST_POSTGRES_URL").unwrap_or_default();
+    let backend = match args.server {
+        Server::Memory => Backend::Memory,
+        Server::Sqlite => Backend::Sqlite,
+        Server::Postgres => Backend::Postgres(&url),
+    };
     for seed in first..first.saturating_add(runs) {
-        match run(seed, args.config) {
+        match run_on(seed, args.config, backend) {
             Ok(summary) if runs == 1 => say(&format!("seed {seed}: {summary}")),
             Ok(_) => {}
             Err(failure) => {
@@ -120,8 +148,17 @@ mod tests {
                 ticks: 9
             }
         );
-        let search = parse_all(&["--runs", "100", "--from", "40"]).unwrap();
+        let search = parse_all(&["--runs", "100", "--from", "40", "--server", "sqlite"]).unwrap();
         assert_eq!((search.runs, search.from), (100, Some(40)));
+        assert_eq!(search.server, Server::Sqlite);
+        assert_eq!(
+            parse_all(&["--server", "postgres"]).unwrap().server,
+            Server::Postgres
+        );
+        assert_eq!(
+            parse_all(&["--server", "memory"]).unwrap().server,
+            Server::Memory
+        );
         assert_eq!(parse_all(&[]).unwrap().config, Config::default());
     }
 
@@ -135,6 +172,10 @@ mod tests {
         assert_eq!(
             parse_all(&["--fast", "1"]).unwrap_err(),
             "unknown option --fast"
+        );
+        assert_eq!(
+            parse_all(&["--server", "oracle"]).unwrap_err(),
+            "--server: unknown server oracle"
         );
     }
 

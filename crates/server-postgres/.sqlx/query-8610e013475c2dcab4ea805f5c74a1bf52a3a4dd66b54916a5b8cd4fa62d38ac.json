@@ -1,0 +1,77 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT c.account, ch.collection, ch.chunk, ch.size, ch.stored_ms FROM chunks ch\n             JOIN collections c ON c.id = ch.collection\n             WHERE NOT EXISTS (SELECT 1 FROM record_chunks rc\n                               WHERE rc.collection = ch.collection AND rc.chunk = ch.chunk)\n               AND NOT EXISTS (SELECT 1 FROM lease_chunks lc JOIN leases l ON l.id = lc.lease\n                               WHERE l.collection = ch.collection AND lc.chunk = ch.chunk\n                                 AND l.expires_ms > $1)\n             ORDER BY ch.collection, ch.chunk LIMIT $2",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "account",
+        "type_info": "Bytea",
+        "origin": {
+          "Table": {
+            "table": "collections",
+            "name": "account"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "collection",
+        "type_info": "Bytea",
+        "origin": {
+          "Table": {
+            "table": "chunks",
+            "name": "collection"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "chunk",
+        "type_info": "Bytea",
+        "origin": {
+          "Table": {
+            "table": "chunks",
+            "name": "chunk"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "size",
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "chunks",
+            "name": "size"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "stored_ms",
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "chunks",
+            "name": "stored_ms"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int8",
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "8610e013475c2dcab4ea805f5c74a1bf52a3a4dd66b54916a5b8cd4fa62d38ac"
+}

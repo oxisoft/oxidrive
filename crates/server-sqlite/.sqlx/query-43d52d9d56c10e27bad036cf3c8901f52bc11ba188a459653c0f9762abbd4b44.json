@@ -1,0 +1,21 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT 1 AS known FROM chunks WHERE collection = ? AND chunk = ?",
+  "describe": {
+    "columns": [
+      {
+        "name": "known",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "43d52d9d56c10e27bad036cf3c8901f52bc11ba188a459653c0f9762abbd4b44"
+}

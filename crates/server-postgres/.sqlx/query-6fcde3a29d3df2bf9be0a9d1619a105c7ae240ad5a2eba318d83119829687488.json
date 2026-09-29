@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO lease_chunks (lease, chunk) SELECT $1, chunk FROM UNNEST($2::BYTEA[]) AS chunk\n             ON CONFLICT DO NOTHING",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Bytea",
+        "ByteaArray"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "6fcde3a29d3df2bf9be0a9d1619a105c7ae240ad5a2eba318d83119829687488"
+}

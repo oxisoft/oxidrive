@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE records SET body = NULL WHERE collection = ? AND seq = ? AND idx = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": []
+  },
+  "hash": "7ae1a24eea45a1e9191ca17ef0b2a8f3c0a1362df3011d1897ca97d37621a2b5"
+}

@@ -8,63 +8,20 @@ use oxisoft_drive_core::{ServerApi, ServerError};
 use oxisoft_drive_proto::api::{AppendResult, Commits, Head, Missing};
 use oxisoft_drive_proto::{ChunkId, CollectionId, Commit, LeaseId, Seq};
 
-/// A server operation, for failure injection.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ServerOp {
-    /// `head`.
-    Head,
-    /// `commits_after`.
-    CommitsAfter,
-    /// `append`.
-    Append,
-    /// `missing`.
-    Missing,
-    /// `put_chunk`.
-    PutChunk,
-    /// `get_chunk`.
-    GetChunk,
-}
-
-/// How an injected failure behaves.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ServerFailure {
-    /// The request never arrived: nothing changes.
-    Unavailable,
-    /// The server applied the request, but the answer was lost.
-    LostResponse,
-    /// For `append`: another device committed first (the request is refused as a conflict).
-    Conflict,
-}
-
 #[derive(Debug, Default)]
 struct Collection {
     commits: Vec<Commit>,
     chunks: BTreeMap<[u8; 32], Vec<u8>>,
 }
 
-/// Something that happens elsewhere at an exact moment of a device's conversation with the
-/// server, such as another device syncing.
-pub type Hook = Box<dyn FnOnce() + Send>;
-
-struct PendingHook(Hook);
-
-impl std::fmt::Debug for PendingHook {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str("PendingHook")
-    }
-}
-
 #[derive(Debug, Default)]
 struct Inner {
     collections: BTreeMap<CollectionId, Collection>,
     next_lease: u128,
-    failures: Vec<(ServerOp, ServerFailure)>,
-    operations: usize,
-    fail_at: Option<(usize, ServerFailure)>,
-    hook_at: Option<(usize, PendingHook)>,
 }
 
-/// An in-memory server, shared by several devices through `Arc` (core executor §5).
+/// An in-memory server, shared by several devices through `Arc` (core executor §5). Wrap it
+/// in [`Flaky`](crate::Flaky) to inject failures.
 #[derive(Debug, Default)]
 pub struct MemServer {
     inner: Mutex<Inner>,
@@ -79,70 +36,6 @@ impl MemServer {
 
     fn lock(&self) -> MutexGuard<'_, Inner> {
         self.inner.lock().unwrap_or_else(PoisonError::into_inner)
-    }
-
-    /// Makes the next call of `op` fail.
-    pub fn fail_next(&self, op: ServerOp, failure: ServerFailure) {
-        self.lock().failures.push((op, failure));
-    }
-
-    /// Makes the operation `count` operations from now fail (whatever it is).
-    pub fn fail_after(&self, count: usize, failure: ServerFailure) {
-        let mut inner = self.lock();
-        let at = inner.operations + count;
-        inner.fail_at = Some((at, failure));
-    }
-
-    /// Runs `hook` right before the operation `count` operations from now: another device
-    /// syncing, or a user editing, at an exact point of this device's sync. The hook may use
-    /// the server itself.
-    pub fn interleave_after(&self, count: usize, hook: Hook) {
-        let mut inner = self.lock();
-        let at = inner.operations + count;
-        inner.hook_at = Some((at, PendingHook(hook)));
-    }
-
-    /// Cancels every injected failure and hook that hasn't fired.
-    pub fn cancel_failures(&self) {
-        let mut inner = self.lock();
-        inner.fail_at = None;
-        inner.hook_at = None;
-        inner.failures.clear();
-    }
-
-    /// How many operations ran so far.
-    #[must_use]
-    pub fn operations(&self) -> usize {
-        self.lock().operations
-    }
-
-    fn failure(&self, op: ServerOp) -> Option<ServerFailure> {
-        let hook = {
-            let mut inner = self.lock();
-            let due = inner
-                .hook_at
-                .as_ref()
-                .is_some_and(|(at, _)| *at == inner.operations);
-            if due { inner.hook_at.take() } else { None }
-        };
-        // Outside the lock: the hook may call the server.
-        if let Some((_, PendingHook(hook))) = hook {
-            hook();
-        }
-        let mut inner = self.lock();
-        inner.operations += 1;
-        if inner
-            .fail_at
-            .is_some_and(|(at, _)| at + 1 == inner.operations)
-            && let Some((_, failure)) = inner.fail_at.take()
-        {
-            return Some(failure);
-        }
-        let index = inner
-            .failures
-            .iter()
-            .position(|(failing, _)| *failing == op)?;
-        Some(inner.failures.remove(index).1)
     }
 
     /// Replaces every stored chunk object with another one's (a server serving wrong data).
@@ -183,16 +76,12 @@ impl MemServer {
     }
 }
 
-fn unavailable() -> ServerError {
-    ServerError::Unavailable("injected failure".into())
-}
-
 impl ServerApi for MemServer {
     fn head(
         &self,
         collection: CollectionId,
     ) -> impl Future<Output = Result<Option<Head>, ServerError>> + Send {
-        std::future::ready(self.head_now(collection))
+        std::future::ready(Ok(self.head_now(collection)))
     }
 
     fn commits_after(
@@ -201,7 +90,7 @@ impl ServerApi for MemServer {
         after: Seq,
         limit: u32,
     ) -> impl Future<Output = Result<Commits, ServerError>> + Send {
-        std::future::ready(self.commits_after_now(collection, after, limit))
+        std::future::ready(Ok(self.commits_after_now(collection, after, limit)))
     }
 
     fn append(
@@ -218,7 +107,7 @@ impl ServerApi for MemServer {
         collection: CollectionId,
         ids: Vec<ChunkId>,
     ) -> impl Future<Output = Result<Missing, ServerError>> + Send {
-        std::future::ready(self.missing_now(collection, ids))
+        std::future::ready(Ok(self.missing_now(collection, ids)))
     }
 
     fn put_chunk(
@@ -228,7 +117,8 @@ impl ServerApi for MemServer {
         id: ChunkId,
         object: Vec<u8>,
     ) -> impl Future<Output = Result<(), ServerError>> + Send {
-        std::future::ready(self.put_chunk_now(collection, id, object))
+        self.put_chunk_now(collection, id, object);
+        std::future::ready(Ok(()))
     }
 
     fn get_chunk(
@@ -241,26 +131,14 @@ impl ServerApi for MemServer {
 }
 
 impl MemServer {
-    fn head_now(&self, collection: CollectionId) -> Result<Option<Head>, ServerError> {
-        if self.failure(ServerOp::Head).is_some() {
-            return Err(unavailable());
-        }
-        Ok(self
-            .lock()
+    fn head_now(&self, collection: CollectionId) -> Option<Head> {
+        self.lock()
             .collections
             .get(&collection)
-            .and_then(Self::head_of))
+            .and_then(Self::head_of)
     }
 
-    fn commits_after_now(
-        &self,
-        collection: CollectionId,
-        after: Seq,
-        limit: u32,
-    ) -> Result<Commits, ServerError> {
-        if self.failure(ServerOp::CommitsAfter).is_some() {
-            return Err(unavailable());
-        }
+    fn commits_after_now(&self, collection: CollectionId, after: Seq, limit: u32) -> Commits {
         let inner = self.lock();
         let all = inner
             .collections
@@ -268,10 +146,10 @@ impl MemServer {
             .map_or(&[][..], |c| c.commits.as_slice());
         let start = usize::try_from(after).unwrap_or(usize::MAX).min(all.len());
         let end = start.saturating_add(limit as usize).min(all.len());
-        Ok(Commits {
+        Commits {
             commits: all[start..end].to_vec(),
             more: end < all.len(),
-        })
+        }
     }
 
     fn append_now(
@@ -280,16 +158,9 @@ impl MemServer {
         expected: Option<Head>,
         commit: Commit,
     ) -> Result<AppendResult, ServerError> {
-        let failure = self.failure(ServerOp::Append);
-        if failure == Some(ServerFailure::Unavailable) {
-            return Err(unavailable());
-        }
         let mut inner = self.lock();
         let log = inner.collections.entry(collection).or_default();
         let current = Self::head_of(log);
-        if failure == Some(ServerFailure::Conflict) {
-            return Ok(AppendResult::Conflict(current));
-        }
         if current != expected {
             return Ok(AppendResult::Conflict(current));
         }
@@ -305,22 +176,10 @@ impl MemServer {
             ));
         }
         log.commits.push(commit);
-        let head = Self::head_of(log);
-        drop(inner);
-        if failure == Some(ServerFailure::LostResponse) {
-            return Err(unavailable());
-        }
-        Ok(head.map_or(AppendResult::Conflict(None), AppendResult::Appended))
+        Ok(Self::head_of(log).map_or(AppendResult::Conflict(None), AppendResult::Appended))
     }
 
-    fn missing_now(
-        &self,
-        collection: CollectionId,
-        ids: Vec<ChunkId>,
-    ) -> Result<Missing, ServerError> {
-        if self.failure(ServerOp::Missing).is_some() {
-            return Err(unavailable());
-        }
+    fn missing_now(&self, collection: CollectionId, ids: Vec<ChunkId>) -> Missing {
         let mut inner = self.lock();
         inner.next_lease += 1;
         let lease = LeaseId::from_bytes(inner.next_lease.to_le_bytes());
@@ -332,42 +191,23 @@ impl MemServer {
                 !stored.chunks.contains_key(id.0.as_bytes()) && seen.insert(*id.0.as_bytes())
             })
             .collect();
-        Ok(Missing {
+        Missing {
             ids: missing,
             lease,
             lease_expires_ms: u64::MAX,
-        })
+        }
     }
 
-    fn put_chunk_now(
-        &self,
-        collection: CollectionId,
-        id: ChunkId,
-        object: Vec<u8>,
-    ) -> Result<(), ServerError> {
-        let failure = self.failure(ServerOp::PutChunk);
-        if matches!(
-            failure,
-            Some(ServerFailure::Unavailable | ServerFailure::Conflict)
-        ) {
-            return Err(unavailable());
-        }
+    fn put_chunk_now(&self, collection: CollectionId, id: ChunkId, object: Vec<u8>) {
         self.lock()
             .collections
             .entry(collection)
             .or_default()
             .chunks
             .insert(*id.0.as_bytes(), object);
-        if failure == Some(ServerFailure::LostResponse) {
-            return Err(unavailable());
-        }
-        Ok(())
     }
 
     fn get_chunk_now(&self, collection: CollectionId, id: ChunkId) -> Result<Vec<u8>, ServerError> {
-        if self.failure(ServerOp::GetChunk).is_some() {
-            return Err(unavailable());
-        }
         self.lock()
             .collections
             .get(&collection)

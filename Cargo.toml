@@ -29,7 +29,15 @@ minicbor = { version = "2.3.0", features = ["alloc", "derive"] }
 proptest = "1.11.0"
 rand_chacha = "0.10.0"
 rand_core = "0.10.1"
+sqlx = { version = "0.9.0", default-features = false, features = [
+  "macros",
+  "migrate",
+  "runtime-tokio",
+  "sqlx-toml",
+] }
+tempfile = "3.27.0"
 thiserror = "2.0.21"
+tokio = { version = "1.53.1", default-features = false }
 unicode-normalization = "0.1.25"
 zeroize = { version = "1.9.0", features = ["derive"] }
 zstd = { version = "0.14.0", default-features = false }
@@ -38,6 +46,10 @@ oxisoft-drive-chunking = { version = "0.1.0", path = "crates/chunking" }
 oxisoft-drive-core = { version = "0.1.0", path = "crates/core" }
 oxisoft-drive-crypto = { version = "0.1.0", path = "crates/crypto" }
 oxisoft-drive-proto = { version = "0.1.0", path = "crates/proto" }
+oxisoft-drive-server = { version = "0.1.0", path = "crates/server" }
+oxisoft-drive-server-postgres = { version = "0.1.0", path = "crates/server-postgres" }
+oxisoft-drive-server-sqlite = { version = "0.1.0", path = "crates/server-sqlite" }
+oxisoft-drive-server-store = { version = "0.1.0", path = "crates/server-store" }
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

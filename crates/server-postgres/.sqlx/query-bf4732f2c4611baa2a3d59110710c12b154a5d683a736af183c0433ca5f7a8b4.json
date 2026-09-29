@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE records SET body = NULL WHERE collection = $1 AND seq = $2 AND idx = $3",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Bytea",
+        "Int8",
+        "Int8"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "bf4732f2c4611baa2a3d59110710c12b154a5d683a736af183c0433ca5f7a8b4"
+}

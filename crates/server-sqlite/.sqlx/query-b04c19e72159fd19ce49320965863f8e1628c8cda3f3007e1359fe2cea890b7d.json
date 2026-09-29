@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO record_chunks (collection, seq, idx, chunk) VALUES (?, ?, ?, ?)\n                     ON CONFLICT DO NOTHING",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 4
+    },
+    "nullable": []
+  },
+  "hash": "b04c19e72159fd19ce49320965863f8e1628c8cda3f3007e1359fe2cea890b7d"
+}

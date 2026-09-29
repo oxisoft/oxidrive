@@ -10,5 +10,23 @@ homepage.workspace = true
 keywords.workspace = true
 categories.workspace = true
 
+[dependencies]
+minicbor.workspace = true
+oxisoft-drive-chunking.workspace = true
+oxisoft-drive-crypto.workspace = true
+oxisoft-drive-proto.workspace = true
+oxisoft-drive-server-store.workspace = true
+tempfile.workspace = true
+thiserror.workspace = true
+tokio = { workspace = true, features = ["rt"] }
+
+[dev-dependencies]
+oxisoft-drive-server-sqlite.workspace = true
+rand_chacha.workspace = true
+rand_core.workspace = true
+proptest.workspace = true
+oxisoft-drive-server-store.workspace = true
+tokio = { workspace = true, features = ["macros", "rt", "rt-multi-thread"] }
+
 [lints]
 workspace = true

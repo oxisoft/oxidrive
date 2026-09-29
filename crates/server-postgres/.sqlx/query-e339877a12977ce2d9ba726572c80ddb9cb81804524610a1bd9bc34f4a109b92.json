@@ -1,0 +1,17 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO record_chunks (collection, seq, idx, chunk) VALUES ($1, $2, $3, $4)\n                     ON CONFLICT DO NOTHING",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Bytea",
+        "Int8",
+        "Int8",
+        "Bytea"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "e339877a12977ce2d9ba726572c80ddb9cb81804524610a1bd9bc34f4a109b92"
+}

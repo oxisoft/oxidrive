@@ -1,0 +1,38 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT collection, expires_ms FROM leases WHERE id = ?",
+  "describe": {
+    "columns": [
+      {
+        "name": "collection",
+        "ordinal": 0,
+        "type_info": "Blob",
+        "origin": {
+          "Table": {
+            "table": "leases",
+            "name": "collection"
+          }
+        }
+      },
+      {
+        "name": "expires_ms",
+        "ordinal": 1,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "leases",
+            "name": "expires_ms"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false
+    ]
+  },
+  "hash": "e609103eff4ee0c429a6cb59c30d286663424504350bc4b97eb0f973eafae411"
+}

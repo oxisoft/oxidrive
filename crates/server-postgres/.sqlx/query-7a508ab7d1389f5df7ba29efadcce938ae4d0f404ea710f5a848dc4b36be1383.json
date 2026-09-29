@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "DELETE FROM chunks WHERE collection = $1 AND chunk = $2",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Bytea",
+        "Bytea"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "7a508ab7d1389f5df7ba29efadcce938ae4d0f404ea710f5a848dc4b36be1383"
+}

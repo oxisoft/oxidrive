@@ -1,0 +1,25 @@
+[package]
+name = "oxisoft-drive-server-postgres"
+description = "oxidrive server: the PostgreSQL metadata store."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[dependencies]
+oxisoft-drive-crypto.workspace = true
+oxisoft-drive-proto.workspace = true
+oxisoft-drive-server-store.workspace = true
+sqlx = { workspace = true, features = ["postgres", "tls-rustls-ring-native-roots"] }
+
+[dev-dependencies]
+oxisoft-drive-server-store = { workspace = true, features = ["conformance"] }
+sqlx = { workspace = true, features = ["postgres"] }
+tokio = { workspace = true, features = ["macros", "rt", "rt-multi-thread"] }
+
+[lints]
+workspace = true

@@ -30,12 +30,12 @@ fn files_and_folders_reach_another_device() {
     assert_eq!(a.sync().unwrap().planned, 0);
     assert_eq!(b.sync().unwrap().planned, 0);
     // 20 000 random bytes in chunks of 64–1024 bytes, plus the small file.
-    assert!(world.server.chunk_count(world.collection) > 20);
+    assert!(world.server.inner().chunk_count(world.collection) > 20);
     // Repetitive content deduplicates: 20 copies of one pattern add few chunks.
-    let before = world.server.chunk_count(world.collection);
+    let before = world.server.inner().chunk_count(world.collection);
     a.fs.write(&path("repeat.bin"), &big[..500].repeat(20));
     a.sync().unwrap();
-    assert!(world.server.chunk_count(world.collection) - before < 10);
+    assert!(world.server.inner().chunk_count(world.collection) - before < 10);
 }
 
 #[test]

@@ -1,0 +1,62 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT account, config, retention_days, created_ms FROM collections WHERE id = ?",
+  "describe": {
+    "columns": [
+      {
+        "name": "account",
+        "ordinal": 0,
+        "type_info": "Blob",
+        "origin": {
+          "Table": {
+            "table": "collections",
+            "name": "account"
+          }
+        }
+      },
+      {
+        "name": "config",
+        "ordinal": 1,
+        "type_info": "Blob",
+        "origin": {
+          "Table": {
+            "table": "collections",
+            "name": "config"
+          }
+        }
+      },
+      {
+        "name": "retention_days",
+        "ordinal": 2,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "collections",
+            "name": "retention_days"
+          }
+        }
+      },
+      {
+        "name": "created_ms",
+        "ordinal": 3,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "collections",
+            "name": "created_ms"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "ff02b1c1ed9c589fb900fb2ea74f6fbedd5a6daf7ed452476c46b45ca251e79a"
+}

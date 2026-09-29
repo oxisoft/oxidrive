@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE accounts SET used_bytes = used_bytes + ?\n             WHERE id = (SELECT account FROM collections WHERE id = ?)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "82205b9cd1d789618cc3730defb46eb6a0bb71157f0c6831fd2b391ec5e485c7"
+}

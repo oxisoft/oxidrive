@@ -1,0 +1,17 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE device_lists SET version = $2, signed = $3\n                     WHERE account = $1 AND version = $4",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Bytea",
+        "Int8",
+        "Bytea",
+        "Int8"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "c5685e997e1f3fa9c57e91ca414142f9467bd82258efb22941f34ead39ac1cba"
+}

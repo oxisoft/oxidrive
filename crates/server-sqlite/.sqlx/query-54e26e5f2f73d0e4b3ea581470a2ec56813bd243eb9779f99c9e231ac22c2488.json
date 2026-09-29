@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT signed FROM device_certificates WHERE account = ? AND device = ?",
+  "describe": {
+    "columns": [
+      {
+        "name": "signed",
+        "ordinal": 0,
+        "type_info": "Blob",
+        "origin": {
+          "Table": {
+            "table": "device_certificates",
+            "name": "signed"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "54e26e5f2f73d0e4b3ea581470a2ec56813bd243eb9779f99c9e231ac22c2488"
+}

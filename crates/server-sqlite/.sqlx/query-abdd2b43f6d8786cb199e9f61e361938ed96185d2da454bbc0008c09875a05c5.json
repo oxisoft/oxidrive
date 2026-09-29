@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "DELETE FROM record_chunks WHERE collection = ? AND seq = ? AND idx = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": []
+  },
+  "hash": "abdd2b43f6d8786cb199e9f61e361938ed96185d2da454bbc0008c09875a05c5"
+}

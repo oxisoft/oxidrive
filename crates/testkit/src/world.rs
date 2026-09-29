@@ -7,7 +7,7 @@ use std::sync::Arc;
 use oxisoft_drive_chunking::ChunkParams;
 use oxisoft_drive_core::{
     CollectionKeys, Engine, EngineConfig, EngineError, FsRules, MassDeleteBrake, RelPath,
-    SyncReport,
+    ServerApi, SyncReport,
 };
 use oxisoft_drive_crypto::keys::CollectionKey;
 use oxisoft_drive_crypto::sign::SigningKey;
@@ -15,20 +15,21 @@ use oxisoft_drive_proto::{CollectionId, DeviceId};
 use rand_chacha::ChaCha20Rng;
 use rand_core::SeedableRng;
 
-use crate::{ManualClock, MemFs, MemIndex, MemServer, block_on};
+use crate::{Flaky, ManualClock, MemFs, MemIndex, MemServer, block_on};
 
 /// A folder's content: path → bytes, `None` for folders.
 pub type Tree = BTreeMap<RelPath, Option<Vec<u8>>>;
 
-/// The engine type every test device runs.
-pub type DeviceEngine =
-    Engine<Arc<MemFs>, Arc<MemServer>, Arc<MemIndex>, Arc<ManualClock>, ChaCha20Rng>;
+/// The engine type every test device runs, on server `S`.
+pub type DeviceEngine<S = MemServer> =
+    Engine<Arc<MemFs>, Arc<Flaky<S>>, Arc<MemIndex>, Arc<ManualClock>, ChaCha20Rng>;
 
-/// One collection shared by several devices.
+/// One collection shared by several devices, on server `S` (in memory by default), with
+/// failure injection in front of it.
 #[derive(Debug)]
-pub struct World {
+pub struct World<S = MemServer> {
     /// The server.
-    pub server: Arc<MemServer>,
+    pub server: Arc<Flaky<S>>,
     /// The clock every device sees.
     pub clock: Arc<ManualClock>,
     /// The collection.
@@ -44,7 +45,7 @@ pub struct World {
 
 /// One device.
 #[derive(Debug)]
-pub struct Device {
+pub struct Device<S = MemServer> {
     /// Its number in the world.
     pub number: usize,
     /// Its folder.
@@ -52,24 +53,37 @@ pub struct Device {
     /// Its index.
     pub index: Arc<MemIndex>,
     /// Its engine.
-    pub engine: DeviceEngine,
+    pub engine: DeviceEngine<S>,
 }
 
+/// The collection every world syncs.
+pub const COLLECTION: CollectionId = CollectionId::from_bytes([9; 16]);
+
 impl World {
-    /// A world whose first `trusted + 1` device numbers may commit.
+    /// A world on an in-memory server whose first `trusted + 1` device numbers may commit.
     #[must_use]
     pub fn new(rules: FsRules, trusted: usize) -> Self {
+        Self::with_server(rules, trusted, MemServer::new())
+    }
+}
+
+impl<S: ServerApi> World<S> {
+    /// A world on `server`, whose first `trusted + 1` device numbers may commit.
+    #[must_use]
+    pub fn with_server(rules: FsRules, trusted: usize, server: S) -> Self {
         Self {
-            server: Arc::new(MemServer::new()),
+            server: Arc::new(Flaky::new(server)),
             clock: Arc::new(ManualClock::new(1_790_000_000_000)),
-            collection: CollectionId::from_bytes([9; 16]),
+            collection: COLLECTION,
             rules,
             trusted,
             opened: std::sync::atomic::AtomicU64::new(0),
         }
     }
 
-    fn signing_key(number: usize) -> SigningKey {
+    /// The signing key of device `number` (the same in every world).
+    #[must_use]
+    pub fn signing_key(number: usize) -> SigningKey {
         let seed = u8::try_from(number + 1).unwrap_or(u8::MAX);
         SigningKey::generate(&mut ChaCha20Rng::from_seed([seed; 32]))
     }
@@ -79,7 +93,7 @@ impl World {
         number: usize,
         fs: &Arc<MemFs>,
         index: &Arc<MemIndex>,
-    ) -> Result<DeviceEngine, EngineError> {
+    ) -> Result<DeviceEngine<S>, EngineError> {
         let trusted = (0..=self.trusted)
             .map(|d| {
                 let key = Self::signing_key(d).verifying_key();
@@ -120,7 +134,7 @@ impl World {
     /// # Errors
     ///
     /// If the engine can't be opened or the folder initialised.
-    pub fn device(&self, number: usize) -> Result<Device, EngineError> {
+    pub fn device(&self, number: usize) -> Result<Device<S>, EngineError> {
         let fs = Arc::new(MemFs::new(self.rules));
         let index = Arc::new(MemIndex::new());
         let engine = self.engine(number, &fs, &index)?;
@@ -138,13 +152,13 @@ impl World {
     /// # Errors
     ///
     /// If the engine can't be reopened from the index.
-    pub fn reopen(&self, device: &mut Device) -> Result<(), EngineError> {
+    pub fn reopen(&self, device: &mut Device<S>) -> Result<(), EngineError> {
         device.engine = self.engine(device.number, &device.fs, &device.index)?;
         Ok(())
     }
 }
 
-impl Device {
+impl<S: ServerApi> Device<S> {
     /// One sync.
     ///
     /// # Errors

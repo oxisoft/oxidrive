@@ -1,0 +1,53 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT r.collection, r.seq, r.idx FROM records r\n             JOIN collections c ON c.id = r.collection\n             WHERE r.body IS NOT NULL AND r.superseded_ms IS NOT NULL\n               AND r.superseded_ms <= $1 - c.retention_days * 86400000\n             ORDER BY r.collection, r.seq, r.idx LIMIT $2",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "collection",
+        "type_info": "Bytea",
+        "origin": {
+          "Table": {
+            "table": "records",
+            "name": "collection"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "seq",
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "records",
+            "name": "seq"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "idx",
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "records",
+            "name": "idx"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int8",
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "e7680074b0ab9a6ea83d6f1ea1a47bcf0f6c7c2253ca90fc306a0d8410a0c83d"
+}

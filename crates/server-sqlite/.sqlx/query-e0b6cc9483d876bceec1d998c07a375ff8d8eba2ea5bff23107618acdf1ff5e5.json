@@ -1,0 +1,74 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT signing_key, status, quota_bytes, used_bytes, created_ms FROM accounts\n             WHERE id = ?",
+  "describe": {
+    "columns": [
+      {
+        "name": "signing_key",
+        "ordinal": 0,
+        "type_info": "Blob",
+        "origin": {
+          "Table": {
+            "table": "accounts",
+            "name": "signing_key"
+          }
+        }
+      },
+      {
+        "name": "status",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "accounts",
+            "name": "status"
+          }
+        }
+      },
+      {
+        "name": "quota_bytes",
+        "ordinal": 2,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "accounts",
+            "name": "quota_bytes"
+          }
+        }
+      },
+      {
+        "name": "used_bytes",
+        "ordinal": 3,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "accounts",
+            "name": "used_bytes"
+          }
+        }
+      },
+      {
+        "name": "created_ms",
+        "ordinal": 4,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "accounts",
+            "name": "created_ms"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "e0b6cc9483d876bceec1d998c07a375ff8d8eba2ea5bff23107618acdf1ff5e5"
+}

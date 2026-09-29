@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE records SET superseded_ms = $1\n                 WHERE collection = $2 AND node = $3 AND superseded_ms IS NULL",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int8",
+        "Bytea",
+        "Bytea"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "d0307c6eeb3214506fb140feccb9c6f23342c6ac4af6b3584a6cd2410404ebd8"
+}

@@ -1,0 +1,29 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT chunk FROM chunks WHERE collection = $1 AND chunk = ANY($2)",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "chunk",
+        "type_info": "Bytea",
+        "origin": {
+          "Table": {
+            "table": "chunks",
+            "name": "chunk"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Bytea",
+        "ByteaArray"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "e4e39a529bfa88656ae3b092eb11a7ffa2f2703f7c6a473f44d6912802c28744"
+}

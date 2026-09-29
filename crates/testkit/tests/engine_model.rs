@@ -13,9 +13,9 @@
 
 use std::collections::BTreeSet;
 
-use oxisoft_drive_core::{FileSystem, FsRules, RelPath};
+use oxisoft_drive_core::{FileSystem, FsRules, RelPath, ServerApi};
 use oxisoft_drive_proto::Name;
-use oxisoft_drive_testkit::{MemFs, Tree, World, contents};
+use oxisoft_drive_testkit::{MemFs, ServiceServer, Tree, World, contents};
 use proptest::prelude::*;
 use rand_chacha::ChaCha20Rng;
 use rand_core::{Rng, SeedableRng};
@@ -108,7 +108,16 @@ fn edit(fs: &MemFs, rng: &mut ChaCha20Rng, counter: &mut u64) {
 }
 
 fn run(seed: u64, rules: FsRules, devices: usize, cycles: usize, edits: usize) {
-    let world = World::new(rules, devices);
+    run_world(&World::new(rules, devices), seed, devices, cycles, edits);
+}
+
+fn run_world<S: ServerApi>(
+    world: &World<S>,
+    seed: u64,
+    devices: usize,
+    cycles: usize,
+    edits: usize,
+) {
     let mut rng = ChaCha20Rng::seed_from_u64(seed);
     let mut all: Vec<_> = (0..devices).map(|d| world.device(d).unwrap()).collect();
     let mut counter = 0;
@@ -206,5 +215,38 @@ proptest! {
     fn random_seeds(seed in any::<u64>(), insensitive in any::<bool>()) {
         let rules = if insensitive { CASE_INSENSITIVE } else { CASE_SENSITIVE };
         run(seed, rules, 2, 3, 8);
+    }
+}
+
+/// The same scenarios on the real server with SQLite (server storage H3).
+#[test]
+fn on_the_real_server_with_sqlite() {
+    for seed in 0..10 {
+        let server = ServiceServer::sqlite(2).unwrap();
+        run_world(
+            &World::with_server(CASE_SENSITIVE, 2, server),
+            seed,
+            2,
+            3,
+            6,
+        );
+    }
+}
+
+/// The same scenarios on the real server with PostgreSQL (server storage H3). Needs
+/// `OXIDRIVE_TEST_POSTGRES_URL`; fails without it rather than skipping (server crate G3).
+#[test]
+fn on_the_real_server_with_postgres() {
+    let url = std::env::var("OXIDRIVE_TEST_POSTGRES_URL")
+        .expect("OXIDRIVE_TEST_POSTGRES_URL must point at a PostgreSQL server for this test");
+    for seed in 0..10 {
+        let server = ServiceServer::postgres(&url, 2).unwrap();
+        run_world(
+            &World::with_server(CASE_SENSITIVE, 2, server),
+            seed,
+            2,
+            3,
+            6,
+        );
     }
 }

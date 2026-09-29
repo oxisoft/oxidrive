@@ -22,9 +22,12 @@ use std::fmt::{self, Write as _};
 use std::panic::{self, AssertUnwindSafe};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
+use oxisoft_drive_core::ServerApi;
 use oxisoft_drive_core::{FileSystem, FsError, FsRules, RelPath, RemoteKind, SyncReport};
 use oxisoft_drive_proto::{Name, NodeId};
-use oxisoft_drive_testkit::{Device, MemFs, ServerFailure, Tree, World, contents};
+use oxisoft_drive_testkit::{
+    Device, MemFs, MemServer, ServerFailure, ServiceServer, Tree, World, contents,
+};
 use rand_chacha::ChaCha20Rng;
 use rand_core::{Rng, SeedableRng};
 
@@ -131,14 +134,51 @@ impl fmt::Display for Failure {
 
 impl std::error::Error for Failure {}
 
-/// Runs one simulation.
+/// Which server the devices sync with.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Backend<'a> {
+    /// The in-memory test server (fastest; the default).
+    Memory,
+    /// The real server's rules on SQLite.
+    Sqlite,
+    /// The real server's rules on PostgreSQL: a new database on the server at this URL.
+    Postgres(&'a str),
+}
+
+/// Runs one simulation on the in-memory server.
 ///
 /// # Errors
 ///
 /// The first broken invariant or unexpected error, with the trace leading up to it. A panic
 /// inside the engine is reported the same way, without a trace.
 pub fn run(seed: u64, config: Config) -> Result<Summary, Failure> {
-    panic::catch_unwind(AssertUnwindSafe(|| Sim::new(seed, config)?.run())).unwrap_or_else(
+    run_on(seed, config, Backend::Memory)
+}
+
+/// Runs one simulation on the given server.
+///
+/// # Errors
+///
+/// As [`run`], and if the server can't be set up.
+pub fn run_on(seed: u64, config: Config, backend: Backend<'_>) -> Result<Summary, Failure> {
+    match backend {
+        Backend::Memory => guarded(seed, config, |_| Ok(MemServer::new())),
+        Backend::Sqlite => guarded(seed, config, |trusted| {
+            ServiceServer::sqlite(trusted).map_err(|error| error.to_string())
+        }),
+        Backend::Postgres(url) => guarded(seed, config, |trusted| {
+            ServiceServer::postgres(url, trusted).map_err(|error| error.to_string())
+        }),
+    }
+}
+
+/// Runs a simulation, turning a panic into a [`Failure`].
+fn guarded<S: ServerApi + 'static>(
+    seed: u64,
+    config: Config,
+    server: impl FnOnce(usize) -> Result<S, String>,
+) -> Result<Summary, Failure> {
+    panic::catch_unwind(AssertUnwindSafe(|| Sim::new(seed, config, server)?.run())).unwrap_or_else(
         |payload| {
             let message = payload
                 .downcast_ref::<String>()
@@ -160,7 +200,7 @@ pub fn run(seed: u64, config: Config) -> Result<Summary, Failure> {
     )
 }
 
-type Shared = Arc<Mutex<Device>>;
+type Shared<S> = Arc<Mutex<Device<S>>>;
 
 fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
     mutex.lock().unwrap_or_else(PoisonError::into_inner)
@@ -182,12 +222,12 @@ struct Interleaved {
     counter: u64,
 }
 
-struct Sim {
+struct Sim<S> {
     seed: u64,
     config: Config,
-    world: World,
+    world: World<S>,
     rng: ChaCha20Rng,
-    devices: Vec<Shared>,
+    devices: Vec<Shared<S>>,
     /// The tick until which each device is offline.
     offline_until: Vec<usize>,
     tick: usize,
@@ -202,19 +242,32 @@ struct Sim {
     summary: Summary,
 }
 
-impl Sim {
-    fn new(seed: u64, config: Config) -> Result<Self, Failure> {
+impl<S: ServerApi + 'static> Sim<S> {
+    /// A world of 2–4 devices (drawn from the seed) on the server `server` makes for that
+    /// many trusted devices.
+    fn new(
+        seed: u64,
+        config: Config,
+        server: impl FnOnce(usize) -> Result<S, String>,
+    ) -> Result<Self, Failure> {
         let mut rng = ChaCha20Rng::seed_from_u64(seed);
         let count = 2 + usize::try_from(rng.next_u64() % 3).unwrap_or(0);
         let rules = FsRules {
             case_insensitive: rng.next_u64() % 2 == 1,
             windows_names: false,
         };
+        let server = server(count - 1).map_err(|message| Failure {
+            seed,
+            config,
+            tick: 0,
+            message: format!("server setup: {message}"),
+            trace: Vec::new(),
+        })?;
         let mut sim = Self {
             seed,
             config,
             // Devices 0..count commit; the fresh device checking convergence doesn't.
-            world: World::new(rules, count - 1),
+            world: World::with_server(rules, count - 1, server),
             rng,
             devices: Vec::new(),
             offline_until: vec![0; count],

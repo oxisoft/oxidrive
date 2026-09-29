@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "DELETE FROM record_chunks WHERE collection = $1 AND seq = $2 AND idx = $3",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Bytea",
+        "Int8",
+        "Int8"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "f00f1302a90fd22061a98800fb8bdd4065e78df9c09d6b3b09de315dfff932cc"
+}

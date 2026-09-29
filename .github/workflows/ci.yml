@@ -20,6 +20,20 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+    # The server's PostgreSQL tests (server crate G3); `cargo xtask ci` fails without it.
+    services:
+      postgres:
+        image: postgres:18.6-alpine@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873
+        env:
+          # A throwaway database on the runner, reachable only by this job.
+          POSTGRES_PASSWORD: ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready --username postgres"
+          --health-interval 2s --health-timeout 5s --health-retries 30
+    env:
+      OXIDRIVE_TEST_POSTGRES_URL: postgres://postgres:ci@localhost:5432/postgres
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -32,6 +46,11 @@ jobs:
             cargo-machete@0.9.2,taplo@0.10.0,zizmor@1.30.1
       # install-action has no actionlint; Go's checksum database verifies the module.
       - run: go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
+      # install-action has no sqlx-cli; checks the committed query data. The rust cache
+      # keeps the binary between runs.
+      - run: >-
+          cargo install sqlx-cli --version 0.9.0 --locked --no-default-features
+          --features rustls,sqlite,postgres,sqlx-toml
       - run: cargo xtask ci
         env:
           GH_TOKEN: ${{ github.token }}

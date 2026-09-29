@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO commits (collection, seq, hash, header, device, received_ms)\n             VALUES (?, ?, ?, ?, ?, ?)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 6
+    },
+    "nullable": []
+  },
+  "hash": "c0a0b385da3e229d61af970e581f5b0c80d2b012218f32cf2e97746220cb1f33"
+}

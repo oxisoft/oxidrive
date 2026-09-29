@@ -1,0 +1,50 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT r.collection, r.seq, r.idx FROM records r\n             JOIN collections c ON c.id = r.collection\n             WHERE r.body IS NOT NULL AND r.superseded_ms IS NOT NULL\n               AND r.superseded_ms + c.retention_days * 86400000 <= ?\n             ORDER BY r.collection, r.seq, r.idx LIMIT ?",
+  "describe": {
+    "columns": [
+      {
+        "name": "collection",
+        "ordinal": 0,
+        "type_info": "Blob",
+        "origin": {
+          "Table": {
+            "table": "records",
+            "name": "collection"
+          }
+        }
+      },
+      {
+        "name": "seq",
+        "ordinal": 1,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "records",
+            "name": "seq"
+          }
+        }
+      },
+      {
+        "name": "idx",
+        "ordinal": 2,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "records",
+            "name": "idx"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "59b95a5cfe4aec7e29f9846c66834ba68842cab354a4743a7322ef7cea00b6e1"
+}

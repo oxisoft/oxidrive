@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO collections (id, account, config, retention_days, created_ms)\n             VALUES (?, ?, ?, ?, ?)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 5
+    },
+    "nullable": []
+  },
+  "hash": "e7a8b2757ad7e7772bd26826f544a035937598f01ffe34c9dcabc4b88dd2f5b2"
+}

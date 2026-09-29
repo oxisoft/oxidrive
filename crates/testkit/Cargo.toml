@@ -14,8 +14,16 @@ oxisoft-drive-chunking.workspace = true
 oxisoft-drive-core.workspace = true
 oxisoft-drive-crypto.workspace = true
 oxisoft-drive-proto.workspace = true
+oxisoft-drive-server.workspace = true
+oxisoft-drive-server-postgres.workspace = true
+oxisoft-drive-server-sqlite.workspace = true
+oxisoft-drive-server-store.workspace = true
 rand_chacha.workspace = true
 rand_core.workspace = true
+sqlx = { workspace = true, features = ["postgres"] }
+tempfile.workspace = true
+thiserror.workspace = true
+tokio = { workspace = true, features = ["rt"] }
 
 [dev-dependencies]
 proptest.workspace = true

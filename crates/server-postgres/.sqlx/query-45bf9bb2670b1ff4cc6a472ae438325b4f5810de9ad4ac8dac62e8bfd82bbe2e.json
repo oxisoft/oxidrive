@@ -1,0 +1,29 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT chunk FROM chunks WHERE collection = $1 AND chunk = ANY($2) FOR SHARE",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "chunk",
+        "type_info": "Bytea",
+        "origin": {
+          "Table": {
+            "table": "chunks",
+            "name": "chunk"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Bytea",
+        "ByteaArray"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "45bf9bb2670b1ff4cc6a472ae438325b4f5810de9ad4ac8dac62e8bfd82bbe2e"
+}

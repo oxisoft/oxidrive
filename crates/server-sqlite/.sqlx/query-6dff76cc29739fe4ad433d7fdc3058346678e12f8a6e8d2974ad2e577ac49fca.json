@@ -1,0 +1,50 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT seq, hash, header FROM commits WHERE collection = ? AND seq > ?\n             ORDER BY seq LIMIT ?",
+  "describe": {
+    "columns": [
+      {
+        "name": "seq",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "commits",
+            "name": "seq"
+          }
+        }
+      },
+      {
+        "name": "hash",
+        "ordinal": 1,
+        "type_info": "Blob",
+        "origin": {
+          "Table": {
+            "table": "commits",
+            "name": "hash"
+          }
+        }
+      },
+      {
+        "name": "header",
+        "ordinal": 2,
+        "type_info": "Blob",
+        "origin": {
+          "Table": {
+            "table": "commits",
+            "name": "header"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": [
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "6dff76cc29739fe4ad433d7fdc3058346678e12f8a6e8d2974ad2e577ac49fca"
+}

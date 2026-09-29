@@ -1,0 +1,29 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT signed FROM device_certificates WHERE account = $1 AND device = $2",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "signed",
+        "type_info": "Bytea",
+        "origin": {
+          "Table": {
+            "table": "device_certificates",
+            "name": "signed"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Bytea",
+        "Bytea"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "99a9d8e8e730cd4463143dcec8f72e06a9c4d30904ea9830679f170a37f2e039"
+}

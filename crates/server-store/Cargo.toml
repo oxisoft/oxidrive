@@ -1,0 +1,24 @@
+[package]
+name = "oxisoft-drive-server-store"
+description = "oxidrive server: the metadata store interface, shared by the SQLite and PostgreSQL backends."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[features]
+# The conformance suite, for the backends' tests only.
+conformance = ["dep:tokio"]
+
+[dependencies]
+oxisoft-drive-crypto.workspace = true
+oxisoft-drive-proto.workspace = true
+thiserror.workspace = true
+tokio = { workspace = true, optional = true, features = ["rt", "macros"] }
+
+[lints]
+workspace = true

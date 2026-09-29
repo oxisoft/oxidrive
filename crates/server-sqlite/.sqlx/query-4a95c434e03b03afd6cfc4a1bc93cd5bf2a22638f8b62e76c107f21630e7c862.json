@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE records SET superseded_ms = ?\n                 WHERE collection = ? AND node = ? AND superseded_ms IS NULL",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": []
+  },
+  "hash": "4a95c434e03b03afd6cfc4a1bc93cd5bf2a22638f8b62e76c107f21630e7c862"
+}

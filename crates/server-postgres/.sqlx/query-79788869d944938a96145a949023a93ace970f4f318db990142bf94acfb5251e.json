@@ -1,0 +1,17 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO accounts (id, signing_key, status, quota_bytes, used_bytes, created_ms)\n             VALUES ($1, $2, 'active', $3, 0, $4)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Bytea",
+        "Bytea",
+        "Int8",
+        "Int8"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "79788869d944938a96145a949023a93ace970f4f318db990142bf94acfb5251e"
+}

@@ -1,0 +1,4 @@
+# Compile-time query checks for this crate only (server-crate G2): the macros read the
+# database URL from SQLITE_DATABASE_URL, or the committed .sqlx/ data offline.
+[common]
+database-url-var = "SQLITE_DATABASE_URL"

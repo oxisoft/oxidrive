@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT chunk FROM lease_chunks WHERE lease = ? ORDER BY chunk",
+  "describe": {
+    "columns": [
+      {
+        "name": "chunk",
+        "ordinal": 0,
+        "type_info": "Blob",
+        "origin": {
+          "Table": {
+            "table": "lease_chunks",
+            "name": "chunk"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "971ed09d984f17495f9c333b59ea9b387962f01f7ec67039bf430a7fa60834b4"
+}

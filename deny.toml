@@ -37,6 +37,14 @@ allow-wildcard-paths = true
 skip = [
   { crate = "sha3@0.11.0", reason = "ml-kem 0.3.2 still uses sha3 0.11 while hpke 0.14.1 and x-wing 0.1.0 use 0.12; remove once ml-kem updates (decision C3)" },
   { crate = "syn@2.0.119", reason = "ecosystem moving from syn 2 to 3: thiserror-impl already uses syn 3, the dalek and zeroize derive macros still use syn 2; build time only, remove once they move" },
+  { crate = "sha2@0.10.9", reason = "sqlx-core 0.9.0 still uses the RustCrypto 0.10 line while ed25519-dalek and hpke use sha2 0.11; server crates only, remove once sqlx updates" },
+  { crate = "digest@0.10.7", reason = "comes with sha2 0.10 (sqlx-core 0.9.0), see above" },
+  { crate = "block-buffer@0.10.4", reason = "comes with sha2 0.10 (sqlx-core 0.9.0), see above" },
+  { crate = "crypto-common@0.1.6", reason = "comes with sha2 0.10 (sqlx-core 0.9.0), see above" },
+  { crate = "cpufeatures@0.2.17", reason = "comes with sha2 0.10 (sqlx-core 0.9.0), see above" },
+  { crate = "hashbrown@0.16.1", reason = "sqlx-core 0.9.0 and its hashlink use hashbrown 0.16 while indexmap uses 0.17; server crates only, remove once sqlx updates" },
+  { crate = "getrandom@0.2.17", reason = "ring 0.17 (rustls for sqlx's PostgreSQL TLS) still uses getrandom 0.2; remove once ring updates" },
+  { crate = "windows-sys@0.52.0", reason = "ring 0.17 (rustls for sqlx's PostgreSQL TLS) still uses windows-sys 0.52; remove once ring updates" },
 ]
 
 [sources]

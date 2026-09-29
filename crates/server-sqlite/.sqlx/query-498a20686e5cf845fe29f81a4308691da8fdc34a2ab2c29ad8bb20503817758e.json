@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "DELETE FROM lease_chunks WHERE lease IN (SELECT id FROM leases WHERE expires_ms <= ?)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": []
+  },
+  "hash": "498a20686e5cf845fe29f81a4308691da8fdc34a2ab2c29ad8bb20503817758e"
+}

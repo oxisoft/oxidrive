@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO chunks (collection, chunk, size, stored_ms) VALUES (?, ?, ?, ?)\n             ON CONFLICT DO NOTHING",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 4
+    },
+    "nullable": []
+  },
+  "hash": "49c92f3b81f0b30a4cbe08ab2a99aa4c39b9c7c841584302125012ec141e0b23"
+}

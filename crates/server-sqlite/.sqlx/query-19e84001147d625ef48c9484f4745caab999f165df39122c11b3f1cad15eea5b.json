@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO records (collection, seq, idx, node, hash, body, superseded_ms)\n                 VALUES (?, ?, ?, ?, ?, ?, NULL)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 6
+    },
+    "nullable": []
+  },
+  "hash": "19e84001147d625ef48c9484f4745caab999f165df39122c11b3f1cad15eea5b"
+}
