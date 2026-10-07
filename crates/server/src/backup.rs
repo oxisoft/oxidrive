@@ -173,13 +173,19 @@ fn write_atomically(path: &Path, bytes: &[u8]) -> Result<(), BackupError> {
 }
 
 /// Makes a rename durable. Windows can't open directories and journals renames itself.
+#[cfg(unix)]
 fn sync_dir(dir: &Path) -> Result<(), BackupError> {
-    #[cfg(unix)]
     std::fs::File::open(dir)
         .and_then(|dir| dir.sync_all())
-        .map_err(io(format!("syncing {}", dir.display())))?;
-    #[cfg(not(unix))]
-    let _ = dir;
+        .map_err(io(format!("syncing {}", dir.display())))
+}
+
+#[cfg(not(unix))]
+#[expect(
+    clippy::unnecessary_wraps,
+    reason = "the same signature as the Unix version, which can fail"
+)]
+fn sync_dir(_dir: &Path) -> Result<(), BackupError> {
     Ok(())
 }
 

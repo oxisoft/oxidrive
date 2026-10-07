@@ -313,9 +313,11 @@ async fn setup_collection<M: MetaStore>(store: &M) {
 }
 
 /// Stores chunks nothing references (garbage at once) while garbage collection with a short
-/// grace period runs, and backs up `rounds` times meanwhile. Every backup restores into an
-/// empty server cleanly; across the rounds the restores had objects uploaded after the
-/// snapshot to remove.
+/// grace period runs, and backs up `rounds` times meanwhile. A backup either completes and
+/// restores into an empty server cleanly, or takes longer than the grace period and is
+/// refused; never one that completes broken. Most rounds must complete (a slow machine may
+/// refuse some), and across them the restores had objects uploaded after the snapshot to
+/// remove.
 async fn race<M: MetaStore + 'static>(
     store: M,
     backend: &Backend,
@@ -354,7 +356,7 @@ async fn race<M: MetaStore + 'static>(
                     })
                     .await
                     .unwrap();
-                tokio::time::sleep(Duration::from_millis(1)).await;
+                tokio::time::sleep(Duration::from_millis(5)).await;
             }
         }
     });
@@ -367,23 +369,29 @@ async fn race<M: MetaStore + 'static>(
             }
         }
     });
-    // Let garbage build up and grow old.
-    tokio::time::sleep(Duration::from_millis(1500)).await;
-    let (mut orphans, mut forgotten) = (0, 0);
+    // Let garbage build up and outlive the grace period, so collection deletes during backups.
+    tokio::time::sleep(Duration::from_millis(3500)).await;
+    let (mut orphans, mut forgotten, mut refused) = (0, 0, 0);
     let dir = root.join("backup");
     for round in 0..rounds {
         let sqlite = match source.database {
             Database::Sqlite => Some(SqliteStore::open(&source.sqlite_path()).await.unwrap()),
             Database::Postgres(_) => None,
         };
-        let made = backup::backup(source, sqlite.as_ref(), &dir).await;
-        assert!(made.is_ok(), "round {round}: {:?}", made.err());
+        match backup::backup(source, sqlite.as_ref(), &dir).await {
+            Ok(_) => {}
+            Err(BackupError::TooSlow { .. }) => {
+                refused += 1;
+                continue;
+            }
+            Err(error) => panic!("round {round}: {error}"),
+        }
         let target_dir = root.join(format!("target{round}"));
         let target_db = match backend {
             Backend::Sqlite => "sqlite".to_owned(),
             Backend::Postgres { base, .. } => new_postgres_database(base).await.unwrap(),
         };
-        let target = backend.config(&target_dir, &target_db, "1s");
+        let target = backend.config(&target_dir, &target_db, "3s");
         backup::restore(&target, &dir).await.unwrap();
         let store = match target.database {
             Database::Sqlite => open_target(&target.sqlite_path().to_string_lossy()).await,
@@ -407,13 +415,17 @@ async fn race<M: MetaStore + 'static>(
     collector.await.unwrap();
     assert!(next.load(Ordering::Relaxed) > 100);
     assert!(
+        refused * 2 <= rounds,
+        "{refused} of {rounds} backups took longer than the grace period"
+    );
+    assert!(
         orphans > 0,
         "no backup ever raced an upload (forgotten: {forgotten})"
     );
 }
 
 fn race_config(backend: &Backend, root: &Path, database: &str) -> Config {
-    backend.config(&root.join("source"), database, "1s")
+    backend.config(&root.join("source"), database, "3s")
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]

@@ -1618,7 +1618,7 @@ checksum = "7c87def4c32ab89d880effc9e097653c8da5d6ef28e6b539d313baaacfbafcbe"
 
 [[package]]
 name = "oxisoft-drive-chunking"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "fastcdc",
  "oxisoft-drive-crypto",
@@ -1632,11 +1632,11 @@ dependencies = [
 
 [[package]]
 name = "oxisoft-drive-client"
-version = "0.2.0"
+version = "0.2.1"
 
 [[package]]
 name = "oxisoft-drive-core"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "oxisoft-drive-chunking",
  "oxisoft-drive-crypto",
@@ -1649,7 +1649,7 @@ dependencies = [
 
 [[package]]
 name = "oxisoft-drive-crypto"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "bip39",
  "blake3",
@@ -1665,15 +1665,15 @@ dependencies = [
 
 [[package]]
 name = "oxisoft-drive-daemon"
-version = "0.2.0"
+version = "0.2.1"
 
 [[package]]
 name = "oxisoft-drive-it"
-version = "0.2.0"
+version = "0.2.1"
 
 [[package]]
 name = "oxisoft-drive-proto"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "minicbor",
  "oxisoft-drive-chunking",
@@ -1688,7 +1688,7 @@ dependencies = [
 
 [[package]]
 name = "oxisoft-drive-server"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "axum",
  "bytesize",
@@ -1730,7 +1730,7 @@ dependencies = [
 
 [[package]]
 name = "oxisoft-drive-server-postgres"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "oxisoft-drive-crypto",
  "oxisoft-drive-proto",
@@ -1741,7 +1741,7 @@ dependencies = [
 
 [[package]]
 name = "oxisoft-drive-server-sqlite"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "oxisoft-drive-crypto",
  "oxisoft-drive-proto",
@@ -1753,7 +1753,7 @@ dependencies = [
 
 [[package]]
 name = "oxisoft-drive-server-store"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "oxisoft-drive-crypto",
  "oxisoft-drive-proto",
@@ -1763,7 +1763,7 @@ dependencies = [
 
 [[package]]
 name = "oxisoft-drive-sim"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "oxisoft-drive-core",
  "oxisoft-drive-proto",
@@ -1774,7 +1774,7 @@ dependencies = [
 
 [[package]]
 name = "oxisoft-drive-testkit"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "oxisoft-drive-chunking",
  "oxisoft-drive-core",
@@ -3649,7 +3649,7 @@ dependencies = [
 
 [[package]]
 name = "xtask"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "serde_json",
 ]
