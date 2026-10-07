@@ -7,7 +7,8 @@
 //!
 //! Without `--from`, a search starts at a seed taken from the current time, printed first.
 //! `--server sqlite` or `--server postgres` runs on the real server's rules and stores
-//! (PostgreSQL at `OXIDRIVE_TEST_POSTGRES_URL`) instead of the in-memory server.
+//! (PostgreSQL at `OXIDRIVE_TEST_POSTGRES_URL`) instead of the in-memory server;
+//! `--server http` on the real server started in process, over HTTP through the client.
 
 use std::process::ExitCode;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -15,7 +16,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use oxisoft_drive_sim::{Backend, Config, run_on};
 
 const USAGE: &str = "usage: oxidrive-sim [--seed N | --runs K [--from S]] [--epochs E] \
-                     [--ticks T] [--server memory|sqlite|postgres]";
+                     [--ticks T] [--server memory|sqlite|postgres|http]";
 
 /// Which server to run on.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -23,6 +24,7 @@ enum Server {
     Memory,
     Sqlite,
     Postgres,
+    Http,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -49,6 +51,7 @@ fn parse(mut args: impl Iterator<Item = String>) -> Result<Args, String> {
                 "memory" => Server::Memory,
                 "sqlite" => Server::Sqlite,
                 "postgres" => Server::Postgres,
+                "http" => Server::Http,
                 other => return Err(format!("--server: unknown server {other}")),
             };
             continue;
@@ -98,6 +101,7 @@ fn main() -> ExitCode {
         Server::Memory => Backend::Memory,
         Server::Sqlite => Backend::Sqlite,
         Server::Postgres => Backend::Postgres(&url),
+        Server::Http => Backend::Http,
     };
     for seed in first..first.saturating_add(runs) {
         match run_on(seed, args.config, backend) {
@@ -154,6 +158,10 @@ mod tests {
         assert_eq!(
             parse_all(&["--server", "postgres"]).unwrap().server,
             Server::Postgres
+        );
+        assert_eq!(
+            parse_all(&["--server", "http"]).unwrap().server,
+            Server::Http
         );
         assert_eq!(
             parse_all(&["--server", "memory"]).unwrap().server,

@@ -1,0 +1,5 @@
+# Compile-time query checks for this crate only: the macros read the database URL from
+# CLIENT_DATABASE_URL, or the committed .sqlx/ data offline.
+
+[common]
+database-url-var = "CLIENT_DATABASE_URL"

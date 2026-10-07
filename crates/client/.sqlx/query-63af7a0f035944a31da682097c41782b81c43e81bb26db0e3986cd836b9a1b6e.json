@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO remote (node, entry) VALUES (?, ?)\n                 ON CONFLICT (node) DO UPDATE SET entry = excluded.entry",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "63af7a0f035944a31da682097c41782b81c43e81bb26db0e3986cd836b9a1b6e"
+}

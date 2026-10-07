@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT format FROM state WHERE one = 1",
+  "describe": {
+    "columns": [
+      {
+        "name": "format",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "state",
+            "name": "format"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "394eeaf9fc559b8a38c36c9d92c7cb5753cb6b9b4778913789217196919c65ee"
+}

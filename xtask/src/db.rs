@@ -149,8 +149,8 @@ pub(crate) enum Prepare {
     Write,
 }
 
-/// Checks or rewrites the query data of both store crates against freshly migrated
-/// databases.
+/// Checks or rewrites the query data of the store crates and the client's index against
+/// freshly migrated databases.
 pub(crate) fn sqlx_prepare(root: &Path, postgres: &Postgres, mode: Prepare) -> Result<(), Error> {
     let scratch = root.join("target").join("xtask-sqlx");
     let _ = std::fs::remove_dir_all(&scratch);
@@ -159,8 +159,13 @@ pub(crate) fn sqlx_prepare(root: &Path, postgres: &Postgres, mode: Prepare) -> R
         source,
     })?;
     let sqlite_url = format!("sqlite://{}", absolute(&scratch.join("check.db")).display());
+    let client_url = format!(
+        "sqlite://{}",
+        absolute(&scratch.join("client.db")).display()
+    );
     let postgres_url = postgres.database(&format!("sqlx_check_{}", std::process::id()));
     for (krate, var, url) in [
+        ("client", "CLIENT_DATABASE_URL", client_url.as_str()),
         ("server-sqlite", "SQLITE_DATABASE_URL", sqlite_url.as_str()),
         (
             "server-postgres",

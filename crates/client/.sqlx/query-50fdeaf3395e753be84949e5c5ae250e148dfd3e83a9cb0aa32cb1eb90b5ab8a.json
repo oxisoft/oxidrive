@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE state SET head_seq = ?, head_hash = ? WHERE one = 1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "50fdeaf3395e753be84949e5c5ae250e148dfd3e83a9cb0aa32cb1eb90b5ab8a"
+}

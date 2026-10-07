@@ -90,7 +90,8 @@ fn ci(root: &Path) -> Result<(), Error> {
 }
 
 /// Lints and tests, for the macOS and Windows CI jobs: everything but PostgreSQL, which
-/// only the Linux job provides (server crate G3).
+/// only the Linux job provides (server crate G3), and the simulator over HTTP (client
+/// foundation B5).
 fn test(root: &Path) -> Result<(), Error> {
     clippy(root)?;
     cargo(
@@ -103,7 +104,7 @@ fn test(root: &Path) -> Result<(), Error> {
             "--all-features",
             "--locked",
             "--filterset",
-            "not (package(oxisoft-drive-server-postgres) | test(/postgres/))",
+            "not (package(oxisoft-drive-server-postgres) | test(/postgres/) | test(=seeds_over_http))",
         ],
         &[("NEXTEST_PROFILE", "ci")],
     )?;

@@ -3,7 +3,7 @@ resolver = "3"
 members = ["crates/*", "xtask"]
 
 [workspace.package]
-version = "0.2.2"
+version = "0.2.3"
 edition = "2024"
 rust-version = "1.98.1"
 license = "AGPL-3.0-or-later"
@@ -27,6 +27,7 @@ bytesize = "2.7.0"
 chacha20poly1305 = { version = "0.11.0", features = ["zeroize"] }
 clap = { version = "4.6.7", features = ["derive"] }
 ed25519-dalek = { version = "3.0.0", features = ["rand_core", "zeroize"] }
+file-id = "0.2.3"
 futures-util = { version = "0.3.34", default-features = false, features = ["sink", "std"] }
 fastcdc = { version = "5.0.0", default-features = false }
 getrandom = { version = "0.4.3", features = ["sys_rng"] }
@@ -57,8 +58,10 @@ reqwest = { version = "0.13.5", default-features = false, features = ["http2"] }
 # TLS 1.3 only (server API §1), on ring like sqlx.
 rustls = { version = "0.23.45", default-features = false, features = ["ring", "std"] }
 rustls-pki-types = { version = "1.15.1", features = ["std"] }
+rustls-platform-verifier = "0.7.1"
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.151"
+sha2 = "0.11.0"
 sqlx = { version = "0.9.0", default-features = false, features = [
   "macros",
   "migrate",
@@ -80,17 +83,22 @@ tracing-subscriber = { version = "0.3.23", default-features = false, features = 
   "std",
 ] }
 unicode-normalization = "0.1.25"
+# The certificate parser rustls uses, under its library name.
+webpki = { package = "rustls-webpki", version = "0.103.15", default-features = false, features = [
+  "std",
+] }
 zeroize = { version = "1.9.0", features = ["derive"] }
 zstd = { version = "0.14.0", default-features = false }
 
-oxisoft-drive-chunking = { version = "0.2.2", path = "crates/chunking" }
-oxisoft-drive-core = { version = "0.2.2", path = "crates/core" }
-oxisoft-drive-crypto = { version = "0.2.2", path = "crates/crypto" }
-oxisoft-drive-proto = { version = "0.2.2", path = "crates/proto" }
-oxisoft-drive-server = { version = "0.2.2", path = "crates/server" }
-oxisoft-drive-server-postgres = { version = "0.2.2", path = "crates/server-postgres" }
-oxisoft-drive-server-sqlite = { version = "0.2.2", path = "crates/server-sqlite" }
-oxisoft-drive-server-store = { version = "0.2.2", path = "crates/server-store" }
+oxisoft-drive-chunking = { version = "0.2.3", path = "crates/chunking" }
+oxisoft-drive-client = { version = "0.2.3", path = "crates/client" }
+oxisoft-drive-core = { version = "0.2.3", path = "crates/core" }
+oxisoft-drive-crypto = { version = "0.2.3", path = "crates/crypto" }
+oxisoft-drive-proto = { version = "0.2.3", path = "crates/proto" }
+oxisoft-drive-server = { version = "0.2.3", path = "crates/server" }
+oxisoft-drive-server-postgres = { version = "0.2.3", path = "crates/server-postgres" }
+oxisoft-drive-server-sqlite = { version = "0.2.3", path = "crates/server-sqlite" }
+oxisoft-drive-server-store = { version = "0.2.3", path = "crates/server-store" }
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

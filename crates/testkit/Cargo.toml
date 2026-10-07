@@ -20,6 +20,9 @@ oxisoft-drive-server-sqlite.workspace = true
 oxisoft-drive-server-store.workspace = true
 rand_chacha.workspace = true
 rand_core.workspace = true
+rcgen.workspace = true
+rustls.workspace = true
+rustls-pki-types.workspace = true
 sqlx = { workspace = true, features = ["postgres"] }
 tempfile.workspace = true
 thiserror.workspace = true

@@ -1,0 +1,50 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT head_seq, head_hash, counter FROM state WHERE one = 1",
+  "describe": {
+    "columns": [
+      {
+        "name": "head_seq",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "state",
+            "name": "head_seq"
+          }
+        }
+      },
+      {
+        "name": "head_hash",
+        "ordinal": 1,
+        "type_info": "Blob",
+        "origin": {
+          "Table": {
+            "table": "state",
+            "name": "head_hash"
+          }
+        }
+      },
+      {
+        "name": "counter",
+        "ordinal": 2,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "state",
+            "name": "counter"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      true,
+      true,
+      false
+    ]
+  },
+  "hash": "89ebf2c9ad153ed983f2f3b877a4fb9715b211021b803e0e2f4ddec2f032b506"
+}

@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE state SET counter = ? WHERE one = 1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": []
+  },
+  "hash": "8cd1658848f8fcfe63f3a6eb834d9f7df3a2b526b102fa30a02ff24e87571afa"
+}

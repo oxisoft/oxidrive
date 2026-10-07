@@ -146,6 +146,16 @@ fn seeds_on_sqlite() {
     }
 }
 
+/// Seeds on the real server over HTTP, through the client (client foundation B5).
+#[test]
+fn seeds_over_http() {
+    for seed in 0..10 {
+        if let Err(failure) = run_on(seed, CONFIG, Backend::Http) {
+            panic!("{failure}");
+        }
+    }
+}
+
 /// Seeds on the real server with PostgreSQL (server storage H3). Needs
 /// `OXIDRIVE_TEST_POSTGRES_URL`; fails without it rather than skipping (server crate G3).
 #[test]

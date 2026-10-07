@@ -14,11 +14,13 @@ name = "oxidrive-sim"
 path = "src/main.rs"
 
 [dependencies]
+oxisoft-drive-client.workspace = true
 oxisoft-drive-core.workspace = true
 oxisoft-drive-proto.workspace = true
 oxisoft-drive-testkit = { path = "../testkit" }
 rand_chacha.workspace = true
 rand_core.workspace = true
+tokio = { workspace = true, features = ["rt-multi-thread"] }
 
 [lints]
 workspace = true

@@ -17,7 +17,10 @@
 mod clock;
 mod flaky;
 mod fs;
+pub mod fs_conformance;
+pub mod http_server;
 mod index;
+pub mod index_conformance;
 mod server;
 mod service_server;
 mod world;

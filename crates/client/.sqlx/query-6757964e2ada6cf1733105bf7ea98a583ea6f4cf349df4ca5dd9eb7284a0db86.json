@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "DELETE FROM base WHERE node = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": []
+  },
+  "hash": "6757964e2ada6cf1733105bf7ea98a583ea6f4cf349df4ca5dd9eb7284a0db86"
+}

@@ -10,5 +10,34 @@ homepage.workspace = true
 keywords.workspace = true
 categories.workspace = true
 
+[dependencies]
+futures-util.workspace = true
+minicbor.workspace = true
+oxisoft-drive-core.workspace = true
+oxisoft-drive-crypto.workspace = true
+oxisoft-drive-proto.workspace = true
+reqwest = { workspace = true, features = ["rustls-no-provider"] }
+rustls.workspace = true
+rustls-pki-types.workspace = true
+rustls-platform-verifier.workspace = true
+sha2.workspace = true
+sqlx = { workspace = true, features = ["sqlite"] }
+thiserror.workspace = true
+tokio = { workspace = true, features = ["macros", "rt", "sync", "time"] }
+tokio-tungstenite = { workspace = true, features = ["rustls-tls-native-roots"] }
+webpki.workspace = true
+
+[target.'cfg(windows)'.dependencies]
+file-id.workspace = true
+
+[dev-dependencies]
+oxisoft-drive-chunking.workspace = true
+oxisoft-drive-testkit = { path = "../testkit" }
+rand_chacha.workspace = true
+rand_core.workspace = true
+sqlx = { workspace = true, features = ["sqlite"] }
+tempfile.workspace = true
+tokio = { workspace = true, features = ["macros", "rt", "rt-multi-thread"] }
+
 [lints]
 workspace = true

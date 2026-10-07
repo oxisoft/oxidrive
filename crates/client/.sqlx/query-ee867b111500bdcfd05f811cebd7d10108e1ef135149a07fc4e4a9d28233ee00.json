@@ -1,0 +1,38 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT node, entry FROM base",
+  "describe": {
+    "columns": [
+      {
+        "name": "node",
+        "ordinal": 0,
+        "type_info": "Blob",
+        "origin": {
+          "Table": {
+            "table": "base",
+            "name": "node"
+          }
+        }
+      },
+      {
+        "name": "entry",
+        "ordinal": 1,
+        "type_info": "Blob",
+        "origin": {
+          "Table": {
+            "table": "base",
+            "name": "entry"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      false,
+      false
+    ]
+  },
+  "hash": "ee867b111500bdcfd05f811cebd7d10108e1ef135149a07fc4e4a9d28233ee00"
+}

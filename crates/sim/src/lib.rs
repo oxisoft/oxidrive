@@ -17,6 +17,10 @@
 //! After every sync, the device's view of the remote tree must also never hold two live
 //! entries at the same place: honest devices don't commit such a tree.
 
+mod http;
+
+pub use http::HttpBackend;
+
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::{self, Write as _};
 use std::panic::{self, AssertUnwindSafe};
@@ -143,6 +147,9 @@ pub enum Backend<'a> {
     Sqlite,
     /// The real server's rules on PostgreSQL: a new database on the server at this URL.
     Postgres(&'a str),
+    /// The real server started in process on SQLite, over HTTP with the client's
+    /// `HttpServer` (client foundation B5).
+    Http,
 }
 
 /// Runs one simulation on the in-memory server.
@@ -169,6 +176,7 @@ pub fn run_on(seed: u64, config: Config, backend: Backend<'_>) -> Result<Summary
         Backend::Postgres(url) => guarded(seed, config, |trusted| {
             ServiceServer::postgres(url, trusted).map_err(|error| error.to_string())
         }),
+        Backend::Http => guarded(seed, config, HttpBackend::start),
     }
 }
 
