@@ -1297,7 +1297,7 @@ checksum = "7c87def4c32ab89d880effc9e097653c8da5d6ef28e6b539d313baaacfbafcbe"
 
 [[package]]
 name = "oxisoft-drive-chunking"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "fastcdc",
  "oxisoft-drive-crypto",
@@ -1311,11 +1311,11 @@ dependencies = [
 
 [[package]]
 name = "oxisoft-drive-client"
-version = "0.1.0"
+version = "0.1.1"
 
 [[package]]
 name = "oxisoft-drive-core"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "oxisoft-drive-chunking",
  "oxisoft-drive-crypto",
@@ -1328,7 +1328,7 @@ dependencies = [
 
 [[package]]
 name = "oxisoft-drive-crypto"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "bip39",
  "blake3",
@@ -1344,15 +1344,15 @@ dependencies = [
 
 [[package]]
 name = "oxisoft-drive-daemon"
-version = "0.1.0"
+version = "0.1.1"
 
 [[package]]
 name = "oxisoft-drive-it"
-version = "0.1.0"
+version = "0.1.1"
 
 [[package]]
 name = "oxisoft-drive-proto"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "minicbor",
  "oxisoft-drive-chunking",
@@ -1367,7 +1367,7 @@ dependencies = [
 
 [[package]]
 name = "oxisoft-drive-server"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "axum",
  "futures-util",
@@ -1394,7 +1394,7 @@ dependencies = [
 
 [[package]]
 name = "oxisoft-drive-server-postgres"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "oxisoft-drive-crypto",
  "oxisoft-drive-proto",
@@ -1405,7 +1405,7 @@ dependencies = [
 
 [[package]]
 name = "oxisoft-drive-server-sqlite"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "oxisoft-drive-crypto",
  "oxisoft-drive-proto",
@@ -1417,7 +1417,7 @@ dependencies = [
 
 [[package]]
 name = "oxisoft-drive-server-store"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "oxisoft-drive-crypto",
  "oxisoft-drive-proto",
@@ -1427,7 +1427,7 @@ dependencies = [
 
 [[package]]
 name = "oxisoft-drive-sim"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "oxisoft-drive-core",
  "oxisoft-drive-proto",
@@ -1438,7 +1438,7 @@ dependencies = [
 
 [[package]]
 name = "oxisoft-drive-testkit"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "oxisoft-drive-chunking",
  "oxisoft-drive-core",
@@ -3010,7 +3010,7 @@ dependencies = [
 
 [[package]]
 name = "xtask"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "serde_json",
 ]
@@ -3028,9 +3028,9 @@ dependencies = [
 
 [[package]]
 name = "yoke-derive"
-version = "0.8.3"
+version = "0.8.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "33811428bee40dbceb6d545e95754741d17a6aef9a4849f0fd62e2ba4f412a78"
+checksum = "ec8ebde2db3681e8c9980cc27822030e68752690ddfa9473e739aeb4dbde6d71"
 dependencies = [
  "proc-macro2",
  "quote",
