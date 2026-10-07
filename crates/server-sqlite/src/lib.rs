@@ -64,6 +64,34 @@ impl SqliteStore {
         Ok(Self { pool })
     }
 
+    /// Writes a consistent copy of the database to `path`, a file that mustn't exist yet,
+    /// while the store stays in use (`VACUUM INTO`, server binary §5).
+    ///
+    /// # Errors
+    ///
+    /// [`StoreError::Backend`] if the copy can't be written.
+    pub async fn snapshot_into(&self, path: &Path) -> Result<(), StoreError> {
+        let target = path
+            .to_str()
+            .ok_or_else(|| StoreError::Backend(format!("{} isn't UTF-8", path.display())))?;
+        sqlx::query("VACUUM INTO ?")
+            .bind(target)
+            .execute(&self.pool)
+            .await
+            .map_err(backend)?;
+        Ok(())
+    }
+
+    /// The newest migration this code knows: the schema version it writes.
+    #[must_use]
+    pub fn schema_version() -> i64 {
+        sqlx::migrate!()
+            .iter()
+            .map(|migration| migration.version)
+            .max()
+            .unwrap_or(0)
+    }
+
     async fn write(&self) -> Result<Transaction<'static, Sqlite>, StoreError> {
         self.pool
             .begin_with("BEGIN IMMEDIATE")
@@ -112,12 +140,58 @@ fn head_of(seq: i64, hash: &[u8]) -> Result<Head, StoreError> {
     })
 }
 
-fn status(text: &str) -> Result<AccountStatus, StoreError> {
-    match text {
-        "active" => Ok(AccountStatus::Active),
-        "disabled" => Ok(AccountStatus::Disabled),
-        other => Err(StoreError::Corrupt(format!("account status {other}"))),
+fn status(text: &str, deleted_ms: Option<i64>) -> Result<AccountStatus, StoreError> {
+    match (text, deleted_ms) {
+        ("disabled", Some(_)) => Ok(AccountStatus::Deleted),
+        ("active", None) => Ok(AccountStatus::Active),
+        ("disabled", None) => Ok(AccountStatus::Disabled),
+        (other, _) => Err(StoreError::Corrupt(format!("account status {other}"))),
     }
+}
+
+#[expect(
+    clippy::too_many_arguments,
+    reason = "one argument per column of the query that read them"
+)]
+fn account_row(
+    id: &[u8],
+    signing_key: Vec<u8>,
+    kem_key: Vec<u8>,
+    status_text: &str,
+    deleted_ms: Option<i64>,
+    label: String,
+    quota_bytes: i64,
+    used_bytes: i64,
+    created_ms: i64,
+) -> Result<AccountRow, StoreError> {
+    Ok(AccountRow {
+        id: AccountId::from_bytes(fixed(id)?),
+        signing_key,
+        kem_key,
+        status: status(status_text, deleted_ms)?,
+        label,
+        quota_bytes: uint(quota_bytes)?,
+        used_bytes: uint(used_bytes)?,
+        created_ms: uint(created_ms)?,
+    })
+}
+
+fn chunk_row(
+    account: &[u8],
+    collection: &[u8],
+    chunk: &[u8],
+    size: i64,
+    stored_ms: i64,
+    garbage_ms: Option<i64>,
+) -> Result<ChunkRow, StoreError> {
+    Ok(ChunkRow {
+        account: AccountId::from_bytes(fixed(account)?),
+        collection: CollectionId::from_bytes(fixed(collection)?),
+        chunk: ChunkId(digest(chunk)?),
+        size: uint(size)?,
+        stored_ms: uint(stored_ms)?,
+        garbage_ms: garbage_ms.map(uint).transpose()?,
+    })
 }
 
 async fn head_in(
@@ -276,6 +350,27 @@ async fn insert_envelopes(
     Ok(())
 }
 
+/// Clears the garbage marks of these chunks: they are referenced or leased now.
+async fn clear_marks(
+    tx: &mut Transaction<'static, Sqlite>,
+    collection: &[u8],
+    chunks: &[ChunkId],
+) -> Result<(), StoreError> {
+    for chunk in chunks {
+        let bytes = chunk.0.as_bytes().as_slice();
+        sqlx::query!(
+            "UPDATE chunks SET garbage_ms = NULL
+             WHERE collection = ? AND chunk = ? AND garbage_ms IS NOT NULL",
+            collection,
+            bytes
+        )
+        .execute(&mut **tx)
+        .await
+        .map_err(backend)?;
+    }
+    Ok(())
+}
+
 impl MetaStore for SqliteStore {
     async fn create_account(&self, account: &NewAccount) -> Result<(), StoreError> {
         let mut tx = self.write().await?;
@@ -286,7 +381,8 @@ impl MetaStore for SqliteStore {
     async fn account(&self, id: AccountId) -> Result<Option<AccountRow>, StoreError> {
         let key = id.as_bytes().as_slice();
         let row = sqlx::query!(
-            "SELECT signing_key, kem_key, status, quota_bytes, used_bytes, created_ms
+            "SELECT signing_key, kem_key, status, deleted_ms, label, quota_bytes, used_bytes,
+                    created_ms
              FROM accounts WHERE id = ?",
             key
         )
@@ -294,17 +390,122 @@ impl MetaStore for SqliteStore {
         .await
         .map_err(backend)?;
         row.map(|row| {
-            Ok(AccountRow {
-                id,
-                signing_key: row.signing_key,
-                kem_key: row.kem_key,
-                status: status(&row.status)?,
-                quota_bytes: uint(row.quota_bytes)?,
-                used_bytes: uint(row.used_bytes)?,
-                created_ms: uint(row.created_ms)?,
-            })
+            account_row(
+                key,
+                row.signing_key,
+                row.kem_key,
+                &row.status,
+                row.deleted_ms,
+                row.label,
+                row.quota_bytes,
+                row.used_bytes,
+                row.created_ms,
+            )
         })
         .transpose()
+    }
+
+    async fn accounts(&self) -> Result<Vec<AccountRow>, StoreError> {
+        let rows = sqlx::query!(
+            "SELECT id, signing_key, kem_key, status, deleted_ms, label, quota_bytes, used_bytes,
+                    created_ms
+             FROM accounts ORDER BY id"
+        )
+        .fetch_all(&self.pool)
+        .await
+        .map_err(backend)?;
+        rows.into_iter()
+            .map(|row| {
+                account_row(
+                    &row.id,
+                    row.signing_key,
+                    row.kem_key,
+                    &row.status,
+                    row.deleted_ms,
+                    row.label,
+                    row.quota_bytes,
+                    row.used_bytes,
+                    row.created_ms,
+                )
+            })
+            .collect()
+    }
+
+    async fn set_account_status(
+        &self,
+        id: AccountId,
+        status: AccountStatus,
+    ) -> Result<(), StoreError> {
+        let key = id.as_bytes().as_slice();
+        let text = match status {
+            AccountStatus::Active => "active",
+            AccountStatus::Disabled => "disabled",
+            AccountStatus::Deleted => return Err(StoreError::Conflict),
+        };
+        let mut tx = self.write().await?;
+        let deleted = sqlx::query_scalar!("SELECT deleted_ms FROM accounts WHERE id = ?", key)
+            .fetch_optional(&mut *tx)
+            .await
+            .map_err(backend)?
+            .ok_or(StoreError::NotFound)?;
+        if deleted.is_some() {
+            return Err(StoreError::Conflict);
+        }
+        sqlx::query!("UPDATE accounts SET status = ? WHERE id = ?", text, key)
+            .execute(&mut *tx)
+            .await
+            .map_err(backend)?;
+        if status == AccountStatus::Disabled {
+            sqlx::query!("DELETE FROM sessions WHERE account = ?", key)
+                .execute(&mut *tx)
+                .await
+                .map_err(backend)?;
+        }
+        tx.commit().await.map_err(backend)
+    }
+
+    async fn set_quota(&self, id: AccountId, quota_bytes: u64) -> Result<(), StoreError> {
+        let (key, quota) = (id.as_bytes().as_slice(), int(quota_bytes));
+        let changed = sqlx::query!(
+            "UPDATE accounts SET quota_bytes = ? WHERE id = ?",
+            quota,
+            key
+        )
+        .execute(&self.pool)
+        .await
+        .map_err(backend)?
+        .rows_affected();
+        if changed == 0 {
+            return Err(StoreError::NotFound);
+        }
+        Ok(())
+    }
+
+    async fn delete_account(&self, id: AccountId, now_ms: u64) -> Result<(), StoreError> {
+        let (key, now) = (id.as_bytes().as_slice(), int(now_ms));
+        let mut tx = self.write().await?;
+        let row = sqlx::query!("SELECT status, deleted_ms FROM accounts WHERE id = ?", key)
+            .fetch_optional(&mut *tx)
+            .await
+            .map_err(backend)?
+            .ok_or(StoreError::NotFound)?;
+        if status(&row.status, row.deleted_ms)? != AccountStatus::Disabled {
+            return Err(StoreError::Conflict);
+        }
+        sqlx::query!("UPDATE accounts SET deleted_ms = ? WHERE id = ?", now, key)
+            .execute(&mut *tx)
+            .await
+            .map_err(backend)?;
+        sqlx::query!(
+            "UPDATE collections SET deleted_ms = COALESCE(deleted_ms, ?), retention_days = 0
+             WHERE account = ? AND purged = 0",
+            now,
+            key
+        )
+        .execute(&mut *tx)
+        .await
+        .map_err(backend)?;
+        tx.commit().await.map_err(backend)
     }
 
     async fn put_device_list(
@@ -468,6 +669,12 @@ impl MetaStore for SqliteStore {
         if !missing.is_empty() {
             return Ok(AppendOutcome::MissingChunks(missing));
         }
+        let referenced: Vec<ChunkId> = append
+            .records
+            .iter()
+            .flat_map(|record| record.chunks.iter().copied())
+            .collect();
+        clear_marks(&mut tx, collection, &referenced).await?;
         let (seq, received) = (int(append.head.seq), int(append.received_ms));
         let (hash, device) = (
             append.head.hash.0.as_bytes().as_slice(),
@@ -641,6 +848,7 @@ impl MetaStore for SqliteStore {
             .await
             .map_err(backend)?;
         }
+        clear_marks(&mut tx, collection, &lease.chunks).await?;
         tx.commit().await.map_err(backend)
     }
 
@@ -718,7 +926,7 @@ impl MetaStore for SqliteStore {
     ) -> Result<Option<ChunkRow>, StoreError> {
         let (key, bytes) = (id.as_bytes().as_slice(), chunk.0.as_bytes().as_slice());
         let row = sqlx::query!(
-            "SELECT c.account, ch.size, ch.stored_ms FROM chunks ch
+            "SELECT c.account, ch.size, ch.stored_ms, ch.garbage_ms FROM chunks ch
              JOIN collections c ON c.id = ch.collection
              WHERE ch.collection = ? AND ch.chunk = ?",
             key,
@@ -728,13 +936,14 @@ impl MetaStore for SqliteStore {
         .await
         .map_err(backend)?;
         row.map(|row| {
-            Ok(ChunkRow {
-                account: AccountId::from_bytes(fixed(&row.account)?),
-                collection: id,
-                chunk,
-                size: uint(row.size)?,
-                stored_ms: uint(row.stored_ms)?,
-            })
+            chunk_row(
+                &row.account,
+                key,
+                bytes,
+                row.size,
+                row.stored_ms,
+                row.garbage_ms,
+            )
         })
         .transpose()
     }
@@ -814,17 +1023,61 @@ impl MetaStore for SqliteStore {
         Ok(dropped)
     }
 
-    async fn garbage(&self, now_ms: u64, limit: u32) -> Result<Vec<ChunkRow>, StoreError> {
-        let (now, limit) = (int(now_ms), i64::from(limit));
+    async fn mark_garbage(&self, now_ms: u64) -> Result<u64, StoreError> {
+        let now = int(now_ms);
+        let mut tx = self.write().await?;
+        let marked = sqlx::query!(
+            "UPDATE chunks SET garbage_ms = ?
+             WHERE garbage_ms IS NULL
+               AND NOT EXISTS (SELECT 1 FROM record_chunks rc
+                               WHERE rc.collection = chunks.collection
+                                 AND rc.chunk = chunks.chunk)
+               AND NOT EXISTS (SELECT 1 FROM lease_chunks lc JOIN leases l ON l.id = lc.lease
+                               WHERE l.collection = chunks.collection
+                                 AND lc.chunk = chunks.chunk AND l.expires_ms > ?)",
+            now,
+            now
+        )
+        .execute(&mut *tx)
+        .await
+        .map_err(backend)?
+        .rows_affected();
+        sqlx::query!(
+            "UPDATE chunks SET garbage_ms = NULL
+             WHERE garbage_ms IS NOT NULL
+               AND (EXISTS (SELECT 1 FROM record_chunks rc
+                            WHERE rc.collection = chunks.collection AND rc.chunk = chunks.chunk)
+                    OR EXISTS (SELECT 1 FROM lease_chunks lc JOIN leases l ON l.id = lc.lease
+                               WHERE l.collection = chunks.collection
+                                 AND lc.chunk = chunks.chunk AND l.expires_ms > ?))",
+            now
+        )
+        .execute(&mut *tx)
+        .await
+        .map_err(backend)?;
+        tx.commit().await.map_err(backend)?;
+        Ok(marked)
+    }
+
+    async fn garbage(
+        &self,
+        now_ms: u64,
+        marked_before_ms: u64,
+        limit: u32,
+    ) -> Result<Vec<ChunkRow>, StoreError> {
+        let (now, before, limit) = (int(now_ms), int(marked_before_ms), i64::from(limit));
         let rows = sqlx::query!(
-            "SELECT c.account, ch.collection, ch.chunk, ch.size, ch.stored_ms FROM chunks ch
+            "SELECT c.account, ch.collection, ch.chunk, ch.size, ch.stored_ms, ch.garbage_ms
+             FROM chunks ch
              JOIN collections c ON c.id = ch.collection
-             WHERE NOT EXISTS (SELECT 1 FROM record_chunks rc
+             WHERE ch.garbage_ms <= ?
+               AND NOT EXISTS (SELECT 1 FROM record_chunks rc
                                WHERE rc.collection = ch.collection AND rc.chunk = ch.chunk)
                AND NOT EXISTS (SELECT 1 FROM lease_chunks lc JOIN leases l ON l.id = lc.lease
                                WHERE l.collection = ch.collection AND lc.chunk = ch.chunk
                                  AND l.expires_ms > ?)
              ORDER BY ch.collection, ch.chunk LIMIT ?",
+            before,
             now,
             limit
         )
@@ -833,13 +1086,14 @@ impl MetaStore for SqliteStore {
         .map_err(backend)?;
         rows.into_iter()
             .map(|row| {
-                Ok(ChunkRow {
-                    account: AccountId::from_bytes(fixed(&row.account)?),
-                    collection: CollectionId::from_bytes(fixed(&row.collection)?),
-                    chunk: ChunkId(digest(&row.chunk)?),
-                    size: uint(row.size)?,
-                    stored_ms: uint(row.stored_ms)?,
-                })
+                chunk_row(
+                    &row.account,
+                    &row.collection,
+                    &row.chunk,
+                    row.size,
+                    row.stored_ms,
+                    row.garbage_ms,
+                )
             })
             .collect()
     }
@@ -848,8 +1102,9 @@ impl MetaStore for SqliteStore {
         &self,
         chunks: &[ChunkRow],
         now_ms: u64,
+        marked_before_ms: u64,
     ) -> Result<Vec<ChunkRow>, StoreError> {
-        let now = int(now_ms);
+        let (now, before) = (int(now_ms), int(marked_before_ms));
         let mut tx = self.write().await?;
         let mut forgotten = Vec::new();
         for row in chunks {
@@ -859,7 +1114,7 @@ impl MetaStore for SqliteStore {
             );
             let size = sqlx::query_scalar!(
                 "DELETE FROM chunks
-                 WHERE collection = ? AND chunk = ?
+                 WHERE collection = ? AND chunk = ? AND garbage_ms <= ?
                    AND NOT EXISTS (SELECT 1 FROM record_chunks rc
                                    WHERE rc.collection = chunks.collection
                                      AND rc.chunk = chunks.chunk)
@@ -869,6 +1124,7 @@ impl MetaStore for SqliteStore {
                  RETURNING size",
                 collection,
                 chunk,
+                before,
                 now
             )
             .fetch_optional(&mut *tx)
@@ -903,7 +1159,8 @@ impl MetaStore for SqliteStore {
         let limit = i64::from(limit);
         // An empty blob sorts before every ID, so "after nothing" is "after the empty key".
         let rows = sqlx::query!(
-            "SELECT c.account, ch.collection, ch.chunk, ch.size, ch.stored_ms FROM chunks ch
+            "SELECT c.account, ch.collection, ch.chunk, ch.size, ch.stored_ms, ch.garbage_ms
+             FROM chunks ch
              JOIN collections c ON c.id = ch.collection
              WHERE ch.collection > ? OR (ch.collection = ? AND ch.chunk > ?)
              ORDER BY ch.collection, ch.chunk LIMIT ?",
@@ -917,13 +1174,14 @@ impl MetaStore for SqliteStore {
         .map_err(backend)?;
         rows.into_iter()
             .map(|row| {
-                Ok(ChunkRow {
-                    account: AccountId::from_bytes(fixed(&row.account)?),
-                    collection: CollectionId::from_bytes(fixed(&row.collection)?),
-                    chunk: ChunkId(digest(&row.chunk)?),
-                    size: uint(row.size)?,
-                    stored_ms: uint(row.stored_ms)?,
-                })
+                chunk_row(
+                    &row.account,
+                    &row.collection,
+                    &row.chunk,
+                    row.size,
+                    row.stored_ms,
+                    row.garbage_ms,
+                )
             })
             .collect()
     }
@@ -961,12 +1219,18 @@ impl MetaStore for SqliteStore {
             .transpose()
     }
 
-    async fn create_invite(&self, hash: [u8; 32], expires_ms: u64) -> Result<(), StoreError> {
+    async fn create_invite(
+        &self,
+        hash: [u8; 32],
+        expires_ms: u64,
+        label: &str,
+    ) -> Result<(), StoreError> {
         let (key, expires) = (hash.as_slice(), int(expires_ms));
         sqlx::query!(
-            "INSERT INTO invites (hash, expires_ms, used_ms) VALUES (?, ?, NULL)",
+            "INSERT INTO invites (hash, expires_ms, used_ms, label) VALUES (?, ?, NULL, ?)",
             key,
-            expires
+            expires,
+            label
         )
         .execute(&self.pool)
         .await
@@ -999,6 +1263,15 @@ impl MetaStore for SqliteStore {
             return Err(StoreError::NotFound);
         }
         insert_account(&mut tx, account).await?;
+        let id = account.id.as_bytes().as_slice();
+        sqlx::query!(
+            "UPDATE accounts SET label = (SELECT label FROM invites WHERE hash = ?) WHERE id = ?",
+            key,
+            id
+        )
+        .execute(&mut *tx)
+        .await
+        .map_err(backend)?;
         write_list(&mut tx, account.id, list).await?;
         insert_certificates(&mut tx, account.id, std::slice::from_ref(certificate)).await?;
         insert_envelopes(&mut tx, account.id, envelopes).await?;
@@ -1392,5 +1665,35 @@ impl MetaStore for SqliteStore {
                 })
             })
             .collect()
+    }
+
+    async fn beat(&self, name: &str, now_ms: u64) -> Result<(), StoreError> {
+        let now = int(now_ms);
+        sqlx::query!(
+            "INSERT INTO heartbeats (name, beat_ms) VALUES (?, ?)
+             ON CONFLICT (name) DO UPDATE SET beat_ms = excluded.beat_ms",
+            name,
+            now
+        )
+        .execute(&self.pool)
+        .await
+        .map_err(backend)?;
+        Ok(())
+    }
+
+    async fn last_beat(&self, name: &str) -> Result<Option<u64>, StoreError> {
+        let beat = sqlx::query_scalar!("SELECT beat_ms FROM heartbeats WHERE name = ?", name)
+            .fetch_optional(&self.pool)
+            .await
+            .map_err(backend)?;
+        beat.map(uint).transpose()
+    }
+
+    async fn stop_beat(&self, name: &str) -> Result<(), StoreError> {
+        sqlx::query!("DELETE FROM heartbeats WHERE name = ?", name)
+            .execute(&self.pool)
+            .await
+            .map_err(backend)?;
+        Ok(())
     }
 }

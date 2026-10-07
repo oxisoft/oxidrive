@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE accounts SET quota_bytes = ? WHERE id = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "27e4685e31bed30e8d01af2d6a3c06dfaec4cd7c072d7e85aa248424b068bb02"
+}

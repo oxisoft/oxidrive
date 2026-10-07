@@ -12,33 +12,54 @@ categories.workspace = true
 
 [dependencies]
 axum.workspace = true
+bytesize.workspace = true
+clap.workspace = true
+getrandom.workspace = true
 governor.workspace = true
+humantime.workspace = true
+hyper.workspace = true
+hyper-util.workspace = true
 minicbor.workspace = true
 oxisoft-drive-chunking.workspace = true
 oxisoft-drive-crypto.workspace = true
 oxisoft-drive-proto.workspace = true
+oxisoft-drive-server-postgres.workspace = true
+oxisoft-drive-server-sqlite.workspace = true
 oxisoft-drive-server-store.workspace = true
 rand_core.workspace = true
+rustls.workspace = true
+rustls-pki-types.workspace = true
+serde.workspace = true
+serde_json.workspace = true
 tempfile.workspace = true
 thiserror.workspace = true
-tokio = { workspace = true, features = ["macros", "rt", "sync", "time"] }
+tokio = { workspace = true, features = [
+  "fs",
+  "io-util",
+  "macros",
+  "net",
+  "process",
+  "rt",
+  "rt-multi-thread",
+  "signal",
+  "sync",
+  "time",
+] }
+tokio-rustls.workspace = true
+toml.workspace = true
+tower.workspace = true
 tower-http.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
 
 [dev-dependencies]
-axum = { workspace = true, features = ["tokio"] }
 futures-util.workspace = true
-oxisoft-drive-server-postgres.workspace = true
-reqwest.workspace = true
-sqlx = { workspace = true, features = ["postgres"] }
-tempfile.workspace = true
-tokio-tungstenite.workspace = true
-tower.workspace = true
-oxisoft-drive-server-sqlite.workspace = true
-rand_chacha.workspace = true
-rand_core.workspace = true
 proptest.workspace = true
-oxisoft-drive-server-store.workspace = true
-tokio = { workspace = true, features = ["macros", "rt", "rt-multi-thread"] }
+rand_chacha.workspace = true
+rcgen.workspace = true
+reqwest = { workspace = true, features = ["rustls-no-provider"] }
+sqlx = { workspace = true, features = ["postgres"] }
+tokio-tungstenite.workspace = true
 
 [lints]
 workspace = true

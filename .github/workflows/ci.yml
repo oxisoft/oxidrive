@@ -34,6 +34,11 @@ jobs:
           --health-interval 2s --health-timeout 5s --health-retries 30
     env:
       OXIDRIVE_TEST_POSTGRES_URL: postgres://postgres:ci@localhost:5432/postgres
+      # pg_dump and pg_restore of the server's version for the backup tests (server binary
+      # J2), from the same image as the service container.
+      OXIDRIVE_TEST_PG_TOOLS: >-
+        docker run --rm -i --network host --env PGPASSWORD
+        postgres:18.6-alpine@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

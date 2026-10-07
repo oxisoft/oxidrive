@@ -1,12 +1,12 @@
 {
-  "db_name": "SQLite",
-  "query": "SELECT signing_key, kem_key, status, quota_bytes, used_bytes, created_ms\n             FROM accounts WHERE id = ?",
+  "db_name": "PostgreSQL",
+  "query": "SELECT signing_key, kem_key, status, deleted_ms, label, quota_bytes, used_bytes,\n                    created_ms\n             FROM accounts WHERE id = $1",
   "describe": {
     "columns": [
       {
-        "name": "signing_key",
         "ordinal": 0,
-        "type_info": "Blob",
+        "name": "signing_key",
+        "type_info": "Bytea",
         "origin": {
           "Table": {
             "table": "accounts",
@@ -15,9 +15,9 @@
         }
       },
       {
-        "name": "kem_key",
         "ordinal": 1,
-        "type_info": "Blob",
+        "name": "kem_key",
+        "type_info": "Bytea",
         "origin": {
           "Table": {
             "table": "accounts",
@@ -26,8 +26,8 @@
         }
       },
       {
-        "name": "status",
         "ordinal": 2,
+        "name": "status",
         "type_info": "Text",
         "origin": {
           "Table": {
@@ -37,9 +37,31 @@
         }
       },
       {
-        "name": "quota_bytes",
         "ordinal": 3,
-        "type_info": "Integer",
+        "name": "deleted_ms",
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "accounts",
+            "name": "deleted_ms"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "label",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "accounts",
+            "name": "label"
+          }
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "quota_bytes",
+        "type_info": "Int8",
         "origin": {
           "Table": {
             "table": "accounts",
@@ -48,9 +70,9 @@
         }
       },
       {
+        "ordinal": 6,
         "name": "used_bytes",
-        "ordinal": 4,
-        "type_info": "Integer",
+        "type_info": "Int8",
         "origin": {
           "Table": {
             "table": "accounts",
@@ -59,9 +81,9 @@
         }
       },
       {
+        "ordinal": 7,
         "name": "created_ms",
-        "ordinal": 5,
-        "type_info": "Integer",
+        "type_info": "Int8",
         "origin": {
           "Table": {
             "table": "accounts",
@@ -71,16 +93,20 @@
       }
     ],
     "parameters": {
-      "Right": 1
+      "Left": [
+        "Bytea"
+      ]
     },
     "nullable": [
       false,
       false,
+      false,
+      true,
       false,
       false,
       false,
       false
     ]
   },
-  "hash": "605d43b249be85b5970c11b4620448710a1993c8513b386adec487a62535bc78"
+  "hash": "f25395b3f60c516f7b13c52821764d89064f1cb852f4a9952039596e9a23493a"
 }

@@ -1,29 +1,28 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT size FROM chunks WHERE collection = $1 AND chunk = $2 FOR UPDATE",
+  "query": "SELECT beat_ms FROM heartbeats WHERE name = $1",
   "describe": {
     "columns": [
       {
         "ordinal": 0,
-        "name": "size",
+        "name": "beat_ms",
         "type_info": "Int8",
         "origin": {
           "Table": {
-            "table": "chunks",
-            "name": "size"
+            "table": "heartbeats",
+            "name": "beat_ms"
           }
         }
       }
     ],
     "parameters": {
       "Left": [
-        "Bytea",
-        "Bytea"
+        "Text"
       ]
     },
     "nullable": [
       false
     ]
   },
-  "hash": "b0244afb67a130dbeb06f20be1ceedc21751df758f8e2df6492bb0ef4165fff1"
+  "hash": "5ccd0e3b487535af05778f863e39150188d30ee84516de5d19a88ad48f7c891e"
 }

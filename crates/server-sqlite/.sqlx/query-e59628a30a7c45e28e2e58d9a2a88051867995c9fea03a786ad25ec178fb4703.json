@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE chunks SET garbage_ms = NULL\n             WHERE collection = ? AND chunk = ? AND garbage_ms IS NOT NULL",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "e59628a30a7c45e28e2e58d9a2a88051867995c9fea03a786ad25ec178fb4703"
+}

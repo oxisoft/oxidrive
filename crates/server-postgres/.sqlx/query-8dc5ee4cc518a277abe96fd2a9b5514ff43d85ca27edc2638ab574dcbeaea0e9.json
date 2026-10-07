@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE accounts SET label = (SELECT label FROM invites WHERE hash = $1) WHERE id = $2",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Bytea",
+        "Bytea"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "8dc5ee4cc518a277abe96fd2a9b5514ff43d85ca27edc2638ab574dcbeaea0e9"
+}

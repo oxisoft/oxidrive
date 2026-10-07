@@ -15,6 +15,9 @@ use crate::{Error, find_tool, run, say};
 
 /// The environment variable tests read the PostgreSQL server URL from.
 pub(crate) const POSTGRES_URL_VAR: &str = "OXIDRIVE_TEST_POSTGRES_URL";
+/// The environment variable tests read the command prefix that runs `pg_dump` and
+/// `pg_restore` from (server binary J2): the tool's name is appended to it.
+pub(crate) const PG_TOOLS_VAR: &str = "OXIDRIVE_TEST_PG_TOOLS";
 /// The PostgreSQL image for local runs: the version CI uses.
 const POSTGRES_IMAGE: &str = "docker.io/library/postgres:18.6-alpine";
 /// Only for the throwaway local server, bound to 127.0.0.1.
@@ -24,7 +27,18 @@ const LOCAL_PASSWORD: &str = "oxidrive-local";
 pub(crate) struct Postgres {
     /// Server URL ending in `/postgres`, for a user who may create databases.
     pub(crate) url: String,
+    /// The command prefix running PostgreSQL's client tools of the server's version: CI's,
+    /// or the same image run with podman.
+    pub(crate) tools: String,
     container: Option<String>,
+}
+
+/// The client tools from the server's image, run with podman on the host network.
+fn podman_tools(podman: &Path) -> String {
+    format!(
+        "{} run --rm -i --network host --env PGPASSWORD {POSTGRES_IMAGE}",
+        podman.display()
+    )
 }
 
 impl Postgres {
@@ -32,8 +46,13 @@ impl Postgres {
     pub(crate) fn start() -> Result<Self, Error> {
         if let Ok(url) = env::var(POSTGRES_URL_VAR) {
             say(&format!("==> postgres: using {POSTGRES_URL_VAR}"));
+            let tools = match env::var(PG_TOOLS_VAR) {
+                Ok(tools) => tools,
+                Err(_) => podman_tools(&find_tool("podman").ok_or(Error::ToolMissing("podman"))?),
+            };
             return Ok(Self {
                 url,
+                tools,
                 container: None,
             });
         }
@@ -60,6 +79,7 @@ impl Postgres {
         // From here on, dropping removes the container.
         let mut server = Self {
             url: String::new(),
+            tools: podman_tools(&podman),
             container: Some(name.clone()),
         };
         let mut ready = false;

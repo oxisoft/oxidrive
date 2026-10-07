@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE collections SET deleted_ms = COALESCE(deleted_ms, ?), retention_days = 0\n             WHERE account = ? AND purged = 0",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "7092125e774d96024f24217baf1265423632713ced6864c505b6a651c1f9046f"
+}

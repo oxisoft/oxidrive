@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO heartbeats (name, beat_ms) VALUES ($1, $2)\n             ON CONFLICT (name) DO UPDATE SET beat_ms = excluded.beat_ms",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Int8"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "7a668ceb18c5bafb7596d40a63701859956b8dfe4768879f2b5beeb1b6063e7c"
+}

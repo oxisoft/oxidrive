@@ -289,7 +289,7 @@ impl<M: MetaStore + 'static> Fixture<M> {
 
     /// Creates an account with an invite; `device` is its first device.
     async fn create_account(&mut self, device: &Device) -> Account {
-        let invite = self.api.service().create_invite(DAY_MS).await.unwrap();
+        let invite = self.api.service().create_invite(DAY_MS, "").await.unwrap();
         let mut account = Account {
             id: AccountId::random(&mut self.rng),
             key: AccountKey::generate(&mut self.rng, 0),
@@ -497,7 +497,7 @@ async fn accounts_and_sign_in<M: MetaStore + 'static>(mut f: Fixture<M>) {
         (StatusCode::FORBIDDEN, ErrorCode::Forbidden)
     );
     // A list that trusts no device.
-    let invite = f.api.service().create_invite(DAY_MS).await.unwrap();
+    let invite = f.api.service().create_invite(DAY_MS, "").await.unwrap();
     let mut bad = CreateAccount {
         invite: invite.clone(),
         ..request.clone()
@@ -1111,10 +1111,17 @@ async fn collections_commits_and_chunks<M: MetaStore + 'static>(mut f: Fixture<M
             .ok::<Vec<CollectionInfo>>()
             .is_empty()
     );
-    // After the retention the trash is emptied and its chunk collected.
+    // After the retention the trash is emptied, its chunk is marked, and it is collected a
+    // grace period later.
     f.advance(3 * DAY_MS);
     let report = f.api.service().collect_garbage().await.unwrap();
-    assert_eq!((report.collections, report.chunks), (1, 1));
+    assert_eq!(
+        (report.collections, report.marked, report.chunks),
+        (1, 1, 0)
+    );
+    f.advance(Settings::default().garbage_grace_ms);
+    let report = f.api.service().collect_garbage().await.unwrap();
+    assert_eq!((report.collections, report.chunks), (0, 1));
 }
 
 async fn limits<M: MetaStore + 'static>(mut f: Fixture<M>) {
@@ -1284,6 +1291,8 @@ async fn over_a_real_socket() {
         .await
         .unwrap();
     });
+    // reqwest's TLS (used by the serve tests) needs a crypto provider, even for plain HTTP.
+    let _ = rustls::crypto::ring::default_provider().install_default();
     let http = reqwest::Client::new();
     let url = |path: &str| format!("http://{address}{path}");
 

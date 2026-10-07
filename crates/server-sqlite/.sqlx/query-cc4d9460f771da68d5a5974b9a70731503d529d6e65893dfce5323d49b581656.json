@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT beat_ms FROM heartbeats WHERE name = ?",
+  "describe": {
+    "columns": [
+      {
+        "name": "beat_ms",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "heartbeats",
+            "name": "beat_ms"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "cc4d9460f771da68d5a5974b9a70731503d529d6e65893dfce5323d49b581656"
+}

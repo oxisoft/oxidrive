@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT c.account, ch.collection, ch.chunk, ch.size, ch.stored_ms FROM chunks ch\n             JOIN collections c ON c.id = ch.collection\n             WHERE ch.collection = $1 AND ch.chunk = $2",
+  "query": "SELECT c.account, ch.collection, ch.chunk, ch.size, ch.stored_ms, ch.garbage_ms\n             FROM chunks ch\n             JOIN collections c ON c.id = ch.collection\n             WHERE ch.collection = $1 AND ch.chunk = $2",
   "describe": {
     "columns": [
       {
@@ -57,6 +57,17 @@
             "name": "stored_ms"
           }
         }
+      },
+      {
+        "ordinal": 5,
+        "name": "garbage_ms",
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "chunks",
+            "name": "garbage_ms"
+          }
+        }
       }
     ],
     "parameters": {
@@ -70,8 +81,9 @@
       false,
       false,
       false,
-      false
+      false,
+      true
     ]
   },
-  "hash": "98e387cf496b50555784c20d7bcb18742fdeaf7dc5c18dc3f0727062eaa1b357"
+  "hash": "cdcfb241b41cd45510b1484c86bc89436770dbc46974f0a38fb0ede41dda80a6"
 }

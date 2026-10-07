@@ -22,9 +22,11 @@ use oxisoft_drive_server_store::{
 use crate::blob::{BlobError, BlobKey, BlobStore};
 
 mod accounts;
+mod admin;
 mod collections;
 
 pub use accounts::Caller;
+pub use admin::{AccountSummary, RestoreReport};
 
 /// Milliseconds since the Unix epoch, as the service sees them.
 pub trait Clock: Send + Sync {
@@ -65,6 +67,9 @@ pub struct Settings {
     pub default_quota: u64,
     /// Retention of new collections, in days (sync §7).
     pub default_retention_days: u32,
+    /// How long a chunk stays marked as garbage before it is deleted (server binary §5,
+    /// J1): a backup that finishes within this time has every object its snapshot needs.
+    pub garbage_grace_ms: u64,
 }
 
 impl Default for Settings {
@@ -84,6 +89,7 @@ impl Default for Settings {
             pairing_ms: 600_000,
             default_quota: u64::MAX,
             default_retention_days: 30,
+            garbage_grace_ms: 86_400_000,
         }
     }
 }
@@ -154,6 +160,8 @@ pub struct GcReport {
     pub sign_ins: u64,
     /// Expired leases dropped.
     pub leases: u64,
+    /// Chunks newly marked as garbage; they are deleted after the grace period.
+    pub marked: u64,
     /// Chunks deleted.
     pub chunks: u64,
     /// Bytes freed.
@@ -249,7 +257,7 @@ where
 
     async fn active_account(&self, id: AccountId) -> Result<AccountRow, ServiceError> {
         let account = self.meta.account(id).await?.ok_or(ServiceError::NotFound)?;
-        if account.status == AccountStatus::Disabled {
+        if account.status != AccountStatus::Active {
             return Err(ServiceError::Disabled);
         }
         Ok(account)
@@ -720,8 +728,9 @@ where
     }
 
     /// Empties trashed collections past their retention, drops expired sessions, pairings
-    /// and leases, then deletes chunks nothing references or leases: the row first, then
-    /// the object, so a crash leaves at most an orphan object (fsck reports it).
+    /// and leases, marks the chunks nothing references or leases, then deletes those marked
+    /// for longer than the grace period (server binary §5): the row first, then the object,
+    /// so a crash leaves at most an orphan object (fsck reports it).
     ///
     /// # Errors
     ///
@@ -736,12 +745,20 @@ where
         report.sign_ins = self.meta.drop_expired_sessions(now).await?
             + self.meta.drop_expired_pairings(now).await?;
         report.leases = self.meta.drop_expired_leases(now).await?;
+        report.marked = self.meta.mark_garbage(now).await?;
+        let marked_before = now.saturating_sub(self.settings.garbage_grace_ms);
         loop {
-            let garbage = self.meta.garbage(now, self.settings.batch).await?;
+            let garbage = self
+                .meta
+                .garbage(now, marked_before, self.settings.batch)
+                .await?;
             if garbage.is_empty() {
                 return Ok(report);
             }
-            let forgotten = self.meta.forget_chunks(&garbage, now).await?;
+            let forgotten = self
+                .meta
+                .forget_chunks(&garbage, now, marked_before)
+                .await?;
             if forgotten.is_empty() {
                 return Ok(report);
             }

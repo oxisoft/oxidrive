@@ -1,0 +1,38 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT status, deleted_ms FROM accounts WHERE id = ?",
+  "describe": {
+    "columns": [
+      {
+        "name": "status",
+        "ordinal": 0,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "accounts",
+            "name": "status"
+          }
+        }
+      },
+      {
+        "name": "deleted_ms",
+        "ordinal": 1,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "accounts",
+            "name": "deleted_ms"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      true
+    ]
+  },
+  "hash": "15e71cf6ad28c522f1200670132db7a90e3a58ee9b659c7e0b43428b6a36dcea"
+}

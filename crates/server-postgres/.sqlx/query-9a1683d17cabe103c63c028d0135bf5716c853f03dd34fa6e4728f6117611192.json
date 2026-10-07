@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE chunks ch SET garbage_ms = $1\n             WHERE ch.garbage_ms IS NULL\n               AND NOT EXISTS (SELECT 1 FROM record_chunks rc\n                               WHERE rc.collection = ch.collection AND rc.chunk = ch.chunk)\n               AND NOT EXISTS (SELECT 1 FROM lease_chunks lc JOIN leases l ON l.id = lc.lease\n                               WHERE l.collection = ch.collection AND lc.chunk = ch.chunk\n                                 AND l.expires_ms > $1)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int8"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "9a1683d17cabe103c63c028d0135bf5716c853f03dd34fa6e4728f6117611192"
+}

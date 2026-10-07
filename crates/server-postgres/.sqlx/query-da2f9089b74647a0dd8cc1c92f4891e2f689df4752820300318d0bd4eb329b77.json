@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO invites (hash, expires_ms, used_ms, label) VALUES ($1, $2, NULL, $3)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Bytea",
+        "Int8",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "da2f9089b74647a0dd8cc1c92f4891e2f689df4752820300318d0bd4eb329b77"
+}

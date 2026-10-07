@@ -1,0 +1,122 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT id, signing_key, kem_key, status, deleted_ms, label, quota_bytes, used_bytes,\n                    created_ms\n             FROM accounts ORDER BY id",
+  "describe": {
+    "columns": [
+      {
+        "name": "id",
+        "ordinal": 0,
+        "type_info": "Blob",
+        "origin": {
+          "Table": {
+            "table": "accounts",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "name": "signing_key",
+        "ordinal": 1,
+        "type_info": "Blob",
+        "origin": {
+          "Table": {
+            "table": "accounts",
+            "name": "signing_key"
+          }
+        }
+      },
+      {
+        "name": "kem_key",
+        "ordinal": 2,
+        "type_info": "Blob",
+        "origin": {
+          "Table": {
+            "table": "accounts",
+            "name": "kem_key"
+          }
+        }
+      },
+      {
+        "name": "status",
+        "ordinal": 3,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "accounts",
+            "name": "status"
+          }
+        }
+      },
+      {
+        "name": "deleted_ms",
+        "ordinal": 4,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "accounts",
+            "name": "deleted_ms"
+          }
+        }
+      },
+      {
+        "name": "label",
+        "ordinal": 5,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "accounts",
+            "name": "label"
+          }
+        }
+      },
+      {
+        "name": "quota_bytes",
+        "ordinal": 6,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "accounts",
+            "name": "quota_bytes"
+          }
+        }
+      },
+      {
+        "name": "used_bytes",
+        "ordinal": 7,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "accounts",
+            "name": "used_bytes"
+          }
+        }
+      },
+      {
+        "name": "created_ms",
+        "ordinal": 8,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "accounts",
+            "name": "created_ms"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      true,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "952ff019fb74eee908bdf0fac9051de2ddbb24b3180a31cb0d9b040b5a2c642c"
+}

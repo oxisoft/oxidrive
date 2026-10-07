@@ -13,6 +13,8 @@ pub enum AccountStatus {
     Active,
     /// Disabled by the admin: nothing but reading its status works.
     Disabled,
+    /// Deleted by the admin: like disabled, for good; its data is freed.
+    Deleted,
 }
 
 /// A new account.
@@ -42,6 +44,8 @@ pub struct AccountRow {
     pub kem_key: Vec<u8>,
     /// Whether it may be used.
     pub status: AccountStatus,
+    /// The admin's note from the invite (empty if none).
+    pub label: String,
     /// Stored bytes allowed.
     pub quota_bytes: u64,
     /// Stored bytes used: the sizes of its collections' chunks.
@@ -231,6 +235,8 @@ pub struct ChunkRow {
     pub size: u64,
     /// Milliseconds since the Unix epoch.
     pub stored_ms: u64,
+    /// When garbage collection found it unused, if it is marked (server binary §5).
+    pub garbage_ms: Option<u64>,
 }
 
 /// A wrapped key as stored: its addressing columns and the encoded proto `Envelope`.

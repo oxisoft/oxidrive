@@ -56,6 +56,35 @@ pub trait MetaStore: Send + Sync {
         id: AccountId,
     ) -> impl Future<Output = Result<Option<AccountRow>, StoreError>> + Send;
 
+    /// Every account, deleted ones included, in ID order.
+    fn accounts(&self) -> impl Future<Output = Result<Vec<AccountRow>, StoreError>> + Send;
+
+    /// Enables or disables an account; disabling ends its sessions in the same transaction.
+    /// [`StoreError::NotFound`] if it doesn't exist, [`StoreError::Conflict`] if it is
+    /// deleted or `status` is [`AccountStatus::Deleted`].
+    fn set_account_status(
+        &self,
+        id: AccountId,
+        status: AccountStatus,
+    ) -> impl Future<Output = Result<(), StoreError>> + Send;
+
+    /// Sets an account's quota. [`StoreError::NotFound`] if it doesn't exist.
+    fn set_quota(
+        &self,
+        id: AccountId,
+        quota_bytes: u64,
+    ) -> impl Future<Output = Result<(), StoreError>> + Send;
+
+    /// Deletes a disabled account at `now_ms`: it is marked deleted and every collection of
+    /// it goes to the trash with no retention, so garbage collection frees its data. The row
+    /// stays, so the ID can't come back. [`StoreError::NotFound`] if it doesn't exist,
+    /// [`StoreError::Conflict`] unless it is disabled.
+    fn delete_account(
+        &self,
+        id: AccountId,
+        now_ms: u64,
+    ) -> impl Future<Output = Result<(), StoreError>> + Send;
+
     /// Replaces an account's device list, adds certificates and envelopes (for the new
     /// devices), and ends the sessions of `revoked` devices, if the stored list still has
     /// version `expected` (`None`: no list yet). [`StoreError::Conflict`] otherwise.
@@ -83,15 +112,17 @@ pub trait MetaStore: Send + Sync {
 
     // ── invites, sign-in ──────────────────────────────────────────────────────────
 
-    /// Records a one-time invite by the hash of its code.
+    /// Records a one-time invite by the hash of its code, with the admin's label for the
+    /// account it creates.
     fn create_invite(
         &self,
         hash: [u8; 32],
         expires_ms: u64,
+        label: &str,
     ) -> impl Future<Output = Result<(), StoreError>> + Send;
 
-    /// Uses up an invite and creates the account with its first device list, certificate
-    /// and envelopes, in one transaction. [`StoreError::NotFound`] if the invite is unknown,
+    /// Uses up an invite and creates the account (with the invite's label) and its first
+    /// device list, certificate and envelopes, in one transaction. [`StoreError::NotFound`] if the invite is unknown,
     /// used or expired at `now_ms`; [`StoreError::Duplicate`] if the account exists.
     fn create_account_by_invite(
         &self,
@@ -270,8 +301,8 @@ pub trait MetaStore: Send + Sync {
     ) -> impl Future<Output = Result<Option<Head>, StoreError>> + Send;
 
     /// Appends a commit if the head is still `append.expected` and every referenced chunk is
-    /// stored: the commit, its records, their chunk references, and "superseded" on each
-    /// node's previous record, in one transaction. Of two racing appends with the same
+    /// stored: the commit, its records, their chunk references, "superseded" on each node's
+    /// previous record, and the referenced chunks' garbage marks cleared, in one transaction. Of two racing appends with the same
     /// expectation, one wins; a chunk can't be garbage-collected while an append that needs
     /// it runs.
     fn append(
@@ -295,7 +326,7 @@ pub trait MetaStore: Send + Sync {
         chunks: &[ChunkId],
     ) -> impl Future<Output = Result<Vec<ChunkId>, StoreError>> + Send;
 
-    /// Records an upload lease.
+    /// Records an upload lease. Its chunks lose their garbage mark in the same transaction.
     fn create_lease(&self, lease: &NewLease)
     -> impl Future<Output = Result<(), StoreError>> + Send;
 
@@ -333,21 +364,30 @@ pub trait MetaStore: Send + Sync {
         now_ms: u64,
     ) -> impl Future<Output = Result<u64, StoreError>> + Send;
 
-    /// Up to `limit` chunks referenced by no unpruned record and covered by no lease that is
-    /// unexpired at `now_ms`.
+    /// Marks garbage (server binary §5): stamps `now_ms` on every chunk without a mark that
+    /// no unpruned record references and no lease unexpired at `now_ms` covers, then clears
+    /// the mark of every marked chunk that is referenced or leased after all (one that an
+    /// append running meanwhile took). Returns how many were newly marked.
+    fn mark_garbage(&self, now_ms: u64) -> impl Future<Output = Result<u64, StoreError>> + Send;
+
+    /// Up to `limit` chunks marked at or before `marked_before_ms`, referenced by no unpruned
+    /// record and covered by no lease that is unexpired at `now_ms`.
     fn garbage(
         &self,
         now_ms: u64,
+        marked_before_ms: u64,
         limit: u32,
     ) -> impl Future<Output = Result<Vec<ChunkRow>, StoreError>> + Send;
 
     /// Forgets chunks (their blobs go afterwards) and takes their sizes off the accounts'
-    /// usage. Chunks referenced or leased meanwhile are kept, including by an append running
-    /// at the same time; returns those forgotten.
+    /// usage. Chunks referenced or leased meanwhile, or no longer marked at or before
+    /// `marked_before_ms`, are kept, including against an append running at the same time;
+    /// returns those forgotten.
     fn forget_chunks(
         &self,
         chunks: &[ChunkRow],
         now_ms: u64,
+        marked_before_ms: u64,
     ) -> impl Future<Output = Result<Vec<ChunkRow>, StoreError>> + Send;
 
     /// Every stored chunk, in (collection, chunk) order, `limit` at a time after `after`.
@@ -356,4 +396,16 @@ pub trait MetaStore: Send + Sync {
         after: Option<(CollectionId, ChunkId)>,
         limit: u32,
     ) -> impl Future<Output = Result<Vec<ChunkRow>, StoreError>> + Send;
+
+    // ── maintenance ───────────────────────────────────────────────────────────────
+
+    /// Records that the process called `name` is alive at `now_ms`.
+    fn beat(&self, name: &str, now_ms: u64) -> impl Future<Output = Result<(), StoreError>> + Send;
+
+    /// When `name` last recorded it was alive, if it did and hasn't stopped.
+    fn last_beat(&self, name: &str)
+    -> impl Future<Output = Result<Option<u64>, StoreError>> + Send;
+
+    /// Forgets `name`'s heartbeat, when it stops.
+    fn stop_beat(&self, name: &str) -> impl Future<Output = Result<(), StoreError>> + Send;
 }

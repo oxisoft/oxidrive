@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT deleted_ms FROM accounts WHERE id = ?",
+  "describe": {
+    "columns": [
+      {
+        "name": "deleted_ms",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "accounts",
+            "name": "deleted_ms"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      true
+    ]
+  },
+  "hash": "d7d1064f42964c19d247f2bacba973131a6fbac859bba1321c3049b49154acb9"
+}

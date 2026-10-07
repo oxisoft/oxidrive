@@ -102,15 +102,18 @@ where
 
     // ── invites and accounts ────────────────────────────────────────────────────────
 
-    /// A new one-time invite code, valid for `valid_ms` (for the admin CLI).
+    /// A new one-time invite code, valid for `valid_ms` (for the admin CLI). The account it
+    /// creates carries `label`, the admin's note.
     ///
     /// # Errors
     ///
     /// Store failures.
-    pub async fn create_invite(&self, valid_ms: u64) -> Result<String, ServiceError> {
+    pub async fn create_invite(&self, valid_ms: u64, label: &str) -> Result<String, ServiceError> {
         let code = hex(&self.random::<16>());
         let expires = self.clock.now_ms().saturating_add(valid_ms);
-        self.meta.create_invite(secret_hash(&code), expires).await?;
+        self.meta
+            .create_invite(secret_hash(&code), expires, label)
+            .await?;
         Ok(code)
     }
 

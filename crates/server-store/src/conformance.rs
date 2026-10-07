@@ -35,8 +35,9 @@ macro_rules! conformance_tests {
         $crate::conformance_tests!(@cases $fresh;
             accounts, device_lists, collections, appends_and_heads, appends_need_chunks, paging,
             invites_create_accounts, sign_in_state, envelopes_and_epochs, collection_lifecycle,
-            pairings, attestations,
-            superseding_and_pruning, chunks_and_usage, leases, garbage, all_chunks_in_order);
+            pairings, attestations, account_admin, heartbeats,
+            superseding_and_pruning, chunks_and_usage, leases, garbage, garbage_marks,
+            all_chunks_in_order);
         #[::tokio::test(flavor = "multi_thread", worker_threads = 4)]
         async fn racing_appends() {
             let (store, _guard) = $fresh.await;
@@ -446,8 +447,9 @@ pub async fn superseding_and_pruning<S: MetaStore>(store: &S) {
         ]
     );
     // Chunk 1 is referenced by nothing now; chunks 2 and 3 still are.
+    assert_eq!(store.mark_garbage(u64::MAX).await.unwrap(), 1);
     let garbage: Vec<ChunkId> = store
-        .garbage(u64::MAX, 10)
+        .garbage(u64::MAX, u64::MAX, 10)
         .await
         .unwrap()
         .iter()
@@ -531,8 +533,8 @@ pub async fn leases<S: MetaStore>(store: &S) {
     assert_eq!(store.lease(id).await.unwrap(), None);
 }
 
-/// Garbage: stored chunks neither referenced by an unpruned record nor leased; forgetting
-/// checks again and frees the usage.
+/// Garbage is marked, then found once marked long enough; a reference or an unexpired lease
+/// keeps a chunk, and what is forgotten comes off the account's usage.
 pub async fn garbage<S: MetaStore>(store: &S) {
     with_collection(store, 1, 1).await;
     for chunk in 1..=4 {
@@ -553,29 +555,37 @@ pub async fn garbage<S: MetaStore>(store: &S) {
         ids.sort_by_key(|chunk| *chunk.0.as_bytes());
         ids
     };
-    let found = store.garbage(50, 10).await.unwrap();
+    // Nothing is garbage before it is marked.
+    assert!(store.garbage(50, u64::MAX, 10).await.unwrap().is_empty());
+    assert_eq!(store.mark_garbage(50).await.unwrap(), 2);
+    // Marking again marks nothing new, and keeps the first stamp.
+    assert_eq!(store.mark_garbage(60).await.unwrap(), 0);
+    let found = store.garbage(50, 50, 10).await.unwrap();
     assert_eq!(ids(&found), [chunk_id(3), chunk_id(4)]);
-    // Chunk 2's lease has expired by then.
+    assert!(found.iter().all(|row| row.garbage_ms == Some(50)));
+    // Marked too recently for this cut-off.
+    assert!(store.garbage(50, 49, 10).await.unwrap().is_empty());
+    // Chunk 2's lease has expired at 100.
+    assert_eq!(store.mark_garbage(100).await.unwrap(), 1);
     assert_eq!(
-        ids(&store.garbage(100, 10).await.unwrap()),
+        ids(&store.garbage(100, 100, 10).await.unwrap()),
         [chunk_id(2), chunk_id(3), chunk_id(4)]
     );
-    assert_eq!(store.garbage(50, 1).await.unwrap().len(), 1);
+    assert_eq!(store.garbage(50, 50, 1).await.unwrap().len(), 1);
 
-    // Chunk 4 gets referenced before it is forgotten: it stays.
+    // Chunk 4 gets referenced before it is forgotten: it stays, and loses its mark.
     append_ok(store, &commit(1, 2, 2, vec![record(2, 12, &[4])])).await;
-    let forgotten = store.forget_chunks(&found, 50).await.unwrap();
+    let four = store
+        .chunk(collection_id(1), chunk_id(4))
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(four.garbage_ms, None);
+    let forgotten = store.forget_chunks(&found, 50, 50).await.unwrap();
     assert_eq!(ids(&forgotten), [chunk_id(3)]);
     assert_eq!(
         store.chunk(collection_id(1), chunk_id(3)).await.unwrap(),
         None
-    );
-    assert!(
-        store
-            .chunk(collection_id(1), chunk_id(4))
-            .await
-            .unwrap()
-            .is_some()
     );
     assert_eq!(
         store
@@ -586,20 +596,214 @@ pub async fn garbage<S: MetaStore>(store: &S) {
             .used_bytes,
         30
     );
-    // A leased chunk stays too, until the lease expires.
+    // A leased chunk stays too, until the lease expires; and only marked early enough.
     let leased = store
         .chunk(collection_id(1), chunk_id(2))
         .await
         .unwrap()
         .unwrap();
+    assert_eq!(leased.garbage_ms, Some(100));
     assert!(
         store
-            .forget_chunks(std::slice::from_ref(&leased), 50)
+            .forget_chunks(std::slice::from_ref(&leased), 50, u64::MAX)
             .await
             .unwrap()
             .is_empty()
     );
-    assert_eq!(store.forget_chunks(&[leased], 100).await.unwrap().len(), 1);
+    assert!(
+        store
+            .forget_chunks(std::slice::from_ref(&leased), 100, 99)
+            .await
+            .unwrap()
+            .is_empty()
+    );
+    assert_eq!(
+        store
+            .forget_chunks(&[leased], 100, 100)
+            .await
+            .unwrap()
+            .len(),
+        1
+    );
+}
+
+/// A new lease or reference clears a chunk's mark, so it has to be marked afresh (and wait
+/// again) once it is unused again.
+pub async fn garbage_marks<S: MetaStore>(store: &S) {
+    with_collection(store, 1, 1).await;
+    store_chunk(store, 1, 1, 10).await;
+    store_chunk(store, 1, 2, 10).await;
+    assert_eq!(store.mark_garbage(10).await.unwrap(), 2);
+    let mark = |chunk: u8| async move {
+        store
+            .chunk(collection_id(1), chunk_id(chunk))
+            .await
+            .unwrap()
+            .unwrap()
+            .garbage_ms
+    };
+    store
+        .create_lease(&NewLease {
+            id: LeaseId::from_bytes([1; 16]),
+            collection: collection_id(1),
+            expires_ms: 1000,
+            chunks: vec![chunk_id(1)],
+        })
+        .await
+        .unwrap();
+    assert_eq!((mark(1).await, mark(2).await), (None, Some(10)));
+    // Unmarked chunks aren't forgotten even when unused.
+    let row = store
+        .chunk(collection_id(1), chunk_id(1))
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(
+        store
+            .forget_chunks(std::slice::from_ref(&row), 2000, u64::MAX)
+            .await
+            .unwrap()
+            .is_empty()
+    );
+    // After the lease, marked anew: the old stamp doesn't come back.
+    assert_eq!(store.mark_garbage(2000).await.unwrap(), 1);
+    assert_eq!(mark(1).await, Some(2000));
+    assert!(
+        store
+            .forget_chunks(std::slice::from_ref(&row), 2000, 1999)
+            .await
+            .unwrap()
+            .is_empty()
+    );
+    assert_eq!(
+        store
+            .forget_chunks(std::slice::from_ref(&row), 2000, 2000)
+            .await
+            .unwrap()
+            .len(),
+        1
+    );
+    // A reference clears the mark the same way.
+    append_ok(store, &commit(1, 1, 1, vec![record(1, 11, &[2])])).await;
+    assert_eq!(mark(2).await, None);
+    assert_eq!(store.mark_garbage(3000).await.unwrap(), 0);
+}
+
+/// The admin's account operations: listing, disabling, quota, deleting.
+pub async fn account_admin<S: MetaStore>(store: &S) {
+    with_collection(store, 2, 1).await;
+    with_collection(store, 1, 2).await;
+    with_collection(store, 1, 3).await;
+    let listed: Vec<AccountId> = store
+        .accounts()
+        .await
+        .unwrap()
+        .iter()
+        .map(|row| row.id)
+        .collect();
+    assert_eq!(listed, [account_id(1), account_id(2)]);
+    let session = SessionRow {
+        account: account_id(1),
+        device: device_id(1),
+        expires_ms: u64::MAX,
+    };
+    store.create_session([1; 32], &session).await.unwrap();
+    let status =
+        |id: u8| async move { store.account(account_id(id)).await.unwrap().unwrap().status };
+
+    // Deleting needs a disabled account; disabling ends its sessions.
+    assert_eq!(
+        store.delete_account(account_id(1), 500).await,
+        Err(StoreError::Conflict)
+    );
+    store
+        .set_account_status(account_id(1), AccountStatus::Disabled)
+        .await
+        .unwrap();
+    assert_eq!(status(1).await, AccountStatus::Disabled);
+    assert_eq!(store.session([1; 32]).await.unwrap(), None);
+    store
+        .set_account_status(account_id(1), AccountStatus::Active)
+        .await
+        .unwrap();
+    assert_eq!(status(1).await, AccountStatus::Active);
+    assert_eq!(
+        store
+            .set_account_status(account_id(9), AccountStatus::Disabled)
+            .await,
+        Err(StoreError::NotFound)
+    );
+    assert_eq!(
+        store
+            .set_account_status(account_id(1), AccountStatus::Deleted)
+            .await,
+        Err(StoreError::Conflict)
+    );
+
+    store.set_quota(account_id(1), 77).await.unwrap();
+    assert_eq!(
+        store
+            .account(account_id(1))
+            .await
+            .unwrap()
+            .unwrap()
+            .quota_bytes,
+        77
+    );
+    assert_eq!(
+        store.set_quota(account_id(9), 1).await,
+        Err(StoreError::NotFound)
+    );
+
+    // One collection is in the trash already, with its own deletion time.
+    store
+        .delete_collection(collection_id(3), 100)
+        .await
+        .unwrap();
+    store
+        .set_account_status(account_id(1), AccountStatus::Disabled)
+        .await
+        .unwrap();
+    store.delete_account(account_id(1), 500).await.unwrap();
+    assert_eq!(status(1).await, AccountStatus::Deleted);
+    assert_eq!(
+        store.delete_account(account_id(1), 600).await,
+        Err(StoreError::Conflict)
+    );
+    assert_eq!(
+        store
+            .set_account_status(account_id(1), AccountStatus::Active)
+            .await,
+        Err(StoreError::Conflict)
+    );
+    assert_eq!(
+        store.delete_account(account_id(9), 600).await,
+        Err(StoreError::NotFound)
+    );
+    // Its collections are in the trash with no retention: purgeable at once.
+    let two = store.collection(collection_id(2)).await.unwrap().unwrap();
+    assert_eq!((two.deleted_ms, two.retention_days), (Some(500), 0));
+    let three = store.collection(collection_id(3)).await.unwrap().unwrap();
+    assert_eq!((three.deleted_ms, three.retention_days), (Some(100), 0));
+    assert_eq!(
+        store.purgeable_collections(500).await.unwrap(),
+        [collection_id(2), collection_id(3)]
+    );
+    // The other account is untouched, and the deleted one is still listed.
+    assert_eq!(status(2).await, AccountStatus::Active);
+    assert_eq!(store.accounts().await.unwrap().len(), 2);
+}
+
+/// Heartbeats: recorded, replaced, read and stopped, per name.
+pub async fn heartbeats<S: MetaStore>(store: &S) {
+    assert_eq!(store.last_beat("serve").await.unwrap(), None);
+    store.beat("serve", 10).await.unwrap();
+    store.beat("serve", 20).await.unwrap();
+    store.beat("other", 5).await.unwrap();
+    assert_eq!(store.last_beat("serve").await.unwrap(), Some(20));
+    store.stop_beat("serve").await.unwrap();
+    assert_eq!(store.last_beat("serve").await.unwrap(), None);
+    assert_eq!(store.last_beat("other").await.unwrap(), Some(5));
 }
 
 /// Every chunk, paged in (collection, chunk) order.
@@ -679,10 +883,11 @@ pub async fn garbage_never_takes_a_chunk_being_committed<S: MetaStore + 'static>
             .await
             .unwrap()
             .unwrap();
+        assert_eq!(store.mark_garbage(1).await.unwrap(), 1, "round {seq}");
         let append = commit(1, Seq::from(seq), 1, vec![record(seq, seq, &[seq])]);
         let (for_append, for_gc) = (Arc::clone(&store), Arc::clone(&store));
         let append_task = tokio::spawn(async move { for_append.append(&append).await });
-        let gc_task = tokio::spawn(async move { for_gc.forget_chunks(&[row], 1).await });
+        let gc_task = tokio::spawn(async move { for_gc.forget_chunks(&[row], 1, 1).await });
         let appended = append_task.await.unwrap().unwrap();
         let forgotten = gc_task.await.unwrap().unwrap();
         match appended {
@@ -712,7 +917,7 @@ pub async fn garbage_never_takes_a_chunk_being_committed<S: MetaStore + 'static>
 /// An invite creates an account with its first list, certificate and envelopes, once.
 pub async fn invites_create_accounts<S: MetaStore>(store: &S) {
     let invite = [4; 32];
-    store.create_invite(invite, 100).await.unwrap();
+    store.create_invite(invite, 100, "for alice").await.unwrap();
     let account = NewAccount {
         id: account_id(1),
         signing_key: vec![1; 32],
@@ -753,10 +958,9 @@ pub async fn invites_create_accounts<S: MetaStore>(store: &S) {
         ..account.clone()
     };
     assert_eq!(create(invite, 50, other).await, Err(StoreError::NotFound));
-    assert_eq!(
-        store.account(account_id(1)).await.unwrap().unwrap().kem_key,
-        vec![2; 8]
-    );
+    let created = store.account(account_id(1)).await.unwrap().unwrap();
+    assert_eq!(created.kem_key, vec![2; 8]);
+    assert_eq!(created.label, "for alice");
     assert_eq!(
         store.device_list(account_id(1)).await.unwrap(),
         Some(list.clone())
@@ -772,7 +976,7 @@ pub async fn invites_create_accounts<S: MetaStore>(store: &S) {
     assert_eq!(store.account_of_device(device_id(4)).await.unwrap(), None);
     assert_eq!(store.envelopes(account_id(1)).await.unwrap(), envelopes);
     // A second invite for an existing account is a duplicate, and leaves the invite unused.
-    store.create_invite([5; 32], 100).await.unwrap();
+    store.create_invite([5; 32], 100, "").await.unwrap();
     assert_eq!(
         create([5; 32], 50, account).await,
         Err(StoreError::Duplicate)
@@ -971,7 +1175,7 @@ pub async fn collection_lifecycle<S: MetaStore>(store: &S) {
             .unwrap(),
         [collection_id(1)]
     );
-    assert!(store.garbage(0, 10).await.unwrap().is_empty());
+    assert_eq!(store.mark_garbage(0).await.unwrap(), 0);
     store.purge_collection(collection_id(1)).await.unwrap();
     assert!(
         store
@@ -1003,7 +1207,8 @@ pub async fn collection_lifecycle<S: MetaStore>(store: &S) {
             .all(|e| e.collection != Some(collection_id(1)))
     );
     // Its chunks are garbage now.
-    assert_eq!(store.garbage(0, 10).await.unwrap().len(), 2);
+    assert_eq!(store.mark_garbage(0).await.unwrap(), 2);
+    assert_eq!(store.garbage(0, 0, 10).await.unwrap().len(), 2);
 }
 
 /// Pairings are approved once, before they expire.

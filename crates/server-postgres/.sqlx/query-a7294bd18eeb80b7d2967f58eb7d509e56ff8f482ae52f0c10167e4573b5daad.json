@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE chunks SET garbage_ms = NULL\n             WHERE collection = $1 AND chunk = ANY($2) AND garbage_ms IS NOT NULL",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Bytea",
+        "ByteaArray"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "a7294bd18eeb80b7d2967f58eb7d509e56ff8f482ae52f0c10167e4573b5daad"
+}

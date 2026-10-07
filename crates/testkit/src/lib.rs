@@ -33,7 +33,7 @@ pub use flaky::{Flaky, Hook, ServerFailure, ServerOp};
 pub use fs::{FsOp, MemFs, UserAction};
 pub use index::MemIndex;
 pub use server::MemServer;
-pub use service_server::{ServiceServer, SetupError};
+pub use service_server::{ACCOUNT, ServiceServer, SetupError, new_postgres_database};
 pub use world::{COLLECTION, Device, DeviceEngine, Tree, World, contents};
 
 /// Runs `future` to completion on the current thread. In-memory implementations complete

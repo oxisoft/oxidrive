@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "DELETE FROM heartbeats WHERE name = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": []
+  },
+  "hash": "5bf1218983d4902ac6e6fac363827463078a9b4d2de02dabdfeb14b6eb23f4ad"
+}

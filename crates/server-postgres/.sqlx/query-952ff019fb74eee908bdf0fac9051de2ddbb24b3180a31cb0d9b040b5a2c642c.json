@@ -1,0 +1,122 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT id, signing_key, kem_key, status, deleted_ms, label, quota_bytes, used_bytes,\n                    created_ms\n             FROM accounts ORDER BY id",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Bytea",
+        "origin": {
+          "Table": {
+            "table": "accounts",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "signing_key",
+        "type_info": "Bytea",
+        "origin": {
+          "Table": {
+            "table": "accounts",
+            "name": "signing_key"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "kem_key",
+        "type_info": "Bytea",
+        "origin": {
+          "Table": {
+            "table": "accounts",
+            "name": "kem_key"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "status",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "accounts",
+            "name": "status"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "deleted_ms",
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "accounts",
+            "name": "deleted_ms"
+          }
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "label",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "accounts",
+            "name": "label"
+          }
+        }
+      },
+      {
+        "ordinal": 6,
+        "name": "quota_bytes",
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "accounts",
+            "name": "quota_bytes"
+          }
+        }
+      },
+      {
+        "ordinal": 7,
+        "name": "used_bytes",
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "accounts",
+            "name": "used_bytes"
+          }
+        }
+      },
+      {
+        "ordinal": 8,
+        "name": "created_ms",
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "accounts",
+            "name": "created_ms"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      true,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "952ff019fb74eee908bdf0fac9051de2ddbb24b3180a31cb0d9b040b5a2c642c"
+}

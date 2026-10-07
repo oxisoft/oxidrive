@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO heartbeats (name, beat_ms) VALUES (?, ?)\n             ON CONFLICT (name) DO UPDATE SET beat_ms = excluded.beat_ms",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "b02887b5f8b7b6042345da1b4ad066c9013f4ff2c14e03baf36f2599fd7fd992"
+}

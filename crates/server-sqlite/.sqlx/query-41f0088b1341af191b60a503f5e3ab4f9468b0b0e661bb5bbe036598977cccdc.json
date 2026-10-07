@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT c.account, ch.collection, ch.chunk, ch.size, ch.stored_ms FROM chunks ch\n             JOIN collections c ON c.id = ch.collection\n             WHERE ch.collection > ? OR (ch.collection = ? AND ch.chunk > ?)\n             ORDER BY ch.collection, ch.chunk LIMIT ?",
+  "query": "SELECT c.account, ch.collection, ch.chunk, ch.size, ch.stored_ms, ch.garbage_ms\n             FROM chunks ch\n             JOIN collections c ON c.id = ch.collection\n             WHERE ch.collection > ? OR (ch.collection = ? AND ch.chunk > ?)\n             ORDER BY ch.collection, ch.chunk LIMIT ?",
   "describe": {
     "columns": [
       {
@@ -57,6 +57,17 @@
             "name": "stored_ms"
           }
         }
+      },
+      {
+        "name": "garbage_ms",
+        "ordinal": 5,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "chunks",
+            "name": "garbage_ms"
+          }
+        }
       }
     ],
     "parameters": {
@@ -67,8 +78,9 @@
       false,
       false,
       false,
-      false
+      false,
+      true
     ]
   },
-  "hash": "fa405d31ee65fbb5f8b6a7a7848d1f27f3fc969d91155c644e410df7f59a3696"
+  "hash": "41f0088b1341af191b60a503f5e3ab4f9468b0b0e661bb5bbe036598977cccdc"
 }

@@ -12,7 +12,9 @@
 //!
 //! Builds use the committed query data (`SQLX_OFFLINE=true`). `ci` needs a PostgreSQL
 //! server: CI sets `OXIDRIVE_TEST_POSTGRES_URL`; locally a throwaway one is started with
-//! podman and removed afterwards.
+//! podman and removed afterwards. The backup tests run `pg_dump` and `pg_restore` of the
+//! server's version: CI names them in `OXIDRIVE_TEST_PG_TOOLS`; locally they come from the
+//! same image, run with podman.
 
 mod coverage;
 mod db;
@@ -77,7 +79,7 @@ fn ci(root: &Path) -> Result<(), Error> {
         ],
         &[("RUSTDOCFLAGS", "-D warnings")],
     )?;
-    coverage(root, &postgres.url)?;
+    coverage(root, &postgres)?;
     drop(postgres);
     doctests(root)?;
     deny(root)?;
@@ -156,7 +158,7 @@ fn doctests(root: &Path) -> Result<(), Error> {
 }
 
 /// Runs the tests under coverage instrumentation, then applies the per-crate gate.
-fn coverage(root: &Path, postgres_url: &str) -> Result<(), Error> {
+fn coverage(root: &Path, postgres: &db::Postgres) -> Result<(), Error> {
     let path = root.join(COVERAGE_JSON);
     if let Some(dir) = path.parent() {
         fs::create_dir_all(dir).map_err(|source| Error::Io {
@@ -181,7 +183,8 @@ fn coverage(root: &Path, postgres_url: &str) -> Result<(), Error> {
         ],
         &[
             ("NEXTEST_PROFILE", "ci"),
-            (db::POSTGRES_URL_VAR, postgres_url),
+            (db::POSTGRES_URL_VAR, &postgres.url),
+            (db::PG_TOOLS_VAR, &postgres.tools),
         ],
     )?;
     let text = fs::read_to_string(&path).map_err(|source| Error::Io {

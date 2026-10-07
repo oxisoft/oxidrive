@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE collections SET deleted_ms = COALESCE(deleted_ms, $1), retention_days = 0\n             WHERE account = $2 AND purged = 0",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int8",
+        "Bytea"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "e4b8b14188c1d48aa7edbabed325288a4656323469e89c50eba345d4a45d9056"
+}

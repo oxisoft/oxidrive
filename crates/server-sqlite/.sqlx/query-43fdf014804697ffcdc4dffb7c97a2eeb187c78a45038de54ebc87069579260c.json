@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT c.account, ch.collection, ch.chunk, ch.size, ch.stored_ms FROM chunks ch\n             JOIN collections c ON c.id = ch.collection\n             WHERE NOT EXISTS (SELECT 1 FROM record_chunks rc\n                               WHERE rc.collection = ch.collection AND rc.chunk = ch.chunk)\n               AND NOT EXISTS (SELECT 1 FROM lease_chunks lc JOIN leases l ON l.id = lc.lease\n                               WHERE l.collection = ch.collection AND lc.chunk = ch.chunk\n                                 AND l.expires_ms > ?)\n             ORDER BY ch.collection, ch.chunk LIMIT ?",
+  "query": "SELECT c.account, ch.collection, ch.chunk, ch.size, ch.stored_ms, ch.garbage_ms\n             FROM chunks ch\n             JOIN collections c ON c.id = ch.collection\n             WHERE ch.garbage_ms <= ?\n               AND NOT EXISTS (SELECT 1 FROM record_chunks rc\n                               WHERE rc.collection = ch.collection AND rc.chunk = ch.chunk)\n               AND NOT EXISTS (SELECT 1 FROM lease_chunks lc JOIN leases l ON l.id = lc.lease\n                               WHERE l.collection = ch.collection AND lc.chunk = ch.chunk\n                                 AND l.expires_ms > ?)\n             ORDER BY ch.collection, ch.chunk LIMIT ?",
   "describe": {
     "columns": [
       {
@@ -57,18 +57,30 @@
             "name": "stored_ms"
           }
         }
+      },
+      {
+        "name": "garbage_ms",
+        "ordinal": 5,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "chunks",
+            "name": "garbage_ms"
+          }
+        }
       }
     ],
     "parameters": {
-      "Right": 2
+      "Right": 3
     },
     "nullable": [
       false,
       false,
       false,
       false,
-      false
+      false,
+      true
     ]
   },
-  "hash": "298440941c6d5862f0e3608f73d21ea3922ba2fc42ff59c85b3d8db3ecf56700"
+  "hash": "43fdf014804697ffcdc4dffb7c97a2eeb187c78a45038de54ebc87069579260c"
 }

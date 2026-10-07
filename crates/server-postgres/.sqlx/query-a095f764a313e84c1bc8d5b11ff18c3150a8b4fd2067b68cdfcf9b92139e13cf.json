@@ -1,0 +1,41 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT size, garbage_ms FROM chunks WHERE collection = $1 AND chunk = $2\n                 FOR UPDATE",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "size",
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "chunks",
+            "name": "size"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "garbage_ms",
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "chunks",
+            "name": "garbage_ms"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Bytea",
+        "Bytea"
+      ]
+    },
+    "nullable": [
+      false,
+      true
+    ]
+  },
+  "hash": "a095f764a313e84c1bc8d5b11ff18c3150a8b4fd2067b68cdfcf9b92139e13cf"
+}

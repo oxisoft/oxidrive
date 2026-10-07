@@ -19,6 +19,11 @@ formats, the sync engine, the server and a headless daemon with a CLI. Nothing i
 | `oxisoft-drive-daemon` | `oxidrived` background sync daemon and `oxidrive` CLI |
 | `oxisoft-drive-server` | `oxidrive-server` |
 
+## Running a server
+
+See [docs/server.md](docs/server.md): configuration, TLS, PostgreSQL, accounts, backup and
+restore.
+
 ## Development
 
 Requires the Rust toolchain pinned in `rust-toolchain.toml` (installed automatically by

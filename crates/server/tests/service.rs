@@ -625,12 +625,21 @@ async fn pruning_garbage_collection_and_fsck() {
     assert_eq!(f.blobs.len(), 3);
     assert!(f.service.fsck().await.unwrap().is_clean());
 
-    // Past the lease: the spare chunk goes. Past retention: the old record and its chunk.
+    // Past the lease: the spare chunk is marked, and goes a grace period later.
+    let grace = Settings::default().garbage_grace_ms;
     f.advance(Settings::default().lease_ms);
     let report = f.service.collect_garbage().await.unwrap();
-    assert_eq!((report.chunks, report.leases), (1, 3));
+    assert_eq!((report.marked, report.chunks, report.leases), (1, 0, 3));
+    assert_eq!(f.blobs.len(), 3);
+    f.advance(grace - 1);
+    assert_eq!(f.service.collect_garbage().await.unwrap().chunks, 0);
+    f.advance(1);
+    assert_eq!(f.service.collect_garbage().await.unwrap().chunks, 1);
+    // Past retention: the old record goes, and its chunk a grace period later.
     f.advance(30 * DAY_MS);
     assert_eq!(f.service.prune().await.unwrap(), 1);
+    assert_eq!(f.service.collect_garbage().await.unwrap().marked, 1);
+    f.advance(grace);
     let report = f.service.collect_garbage().await.unwrap();
     assert_eq!(report.chunks, 1);
     assert_eq!(report.bytes, old.1.len() as u64);
@@ -730,14 +739,19 @@ fn op() -> impl proptest::strategy::Strategy<Value = Op> {
     ]
 }
 
-/// After every collection, exactly the chunks referenced by a present record or covered by
-/// an unexpired lease are stored.
+/// After every collection, exactly the chunks the model keeps are stored: a chunk is needed
+/// while a present record references it or an unexpired lease covers it; one that isn't is
+/// marked at a collection, and deleted at the first collection a grace period after its mark.
+/// A new reference or lease clears the mark (server binary §5).
 async fn garbage_run(ops: Vec<Op>) {
     let mut f = Fixture::new().await;
+    let grace = Settings::default().garbage_grace_ms;
     let chunks: Vec<(ChunkId, Vec<u8>)> = (0..12_u8).map(|n| f.chunk(&[n; 64])).collect();
     let mut head = None;
     // (lease expiry, chunk numbers) of every lease taken.
     let mut leases: Vec<(u64, Vec<u8>)> = Vec::new();
+    // The model: each stored chunk's garbage mark.
+    let mut stored: std::collections::BTreeMap<u8, Option<u64>> = std::collections::BTreeMap::new();
     for op in ops {
         match op {
             Op::Upload(numbers) => {
@@ -746,7 +760,13 @@ async fn garbage_run(ops: Vec<Op>) {
                     .map(|n| chunks[usize::from(*n)].clone())
                     .collect();
                 f.upload(&batch).await;
-                leases.push((f.clock.now_ms() + Settings::default().lease_ms, numbers));
+                leases.push((
+                    f.clock.now_ms() + Settings::default().lease_ms,
+                    numbers.clone(),
+                ));
+                for n in numbers {
+                    stored.insert(n, None);
+                }
             }
             Op::Commit(node, numbers) => {
                 let mut ids = Vec::new();
@@ -758,6 +778,7 @@ async fn garbage_run(ops: Vec<Op>) {
                         .is_ok()
                     {
                         ids.push(id);
+                        stored.insert(n, None);
                     }
                 }
                 let commit = f.commit(0, head, &[(node, ids)]);
@@ -786,12 +807,23 @@ async fn garbage_run(ops: Vec<Op>) {
                         needed.extend(record.chunks);
                     }
                 }
-                for (id, object) in &chunks {
-                    let stored = f.service.get_chunk(f.account, f.collection, *id).await;
-                    if needed.contains(id) {
-                        assert_eq!(stored.as_ref(), Ok(object), "a needed chunk is gone");
+                stored.retain(|n, mark| {
+                    if needed.contains(&chunks[usize::from(*n)].0) {
+                        *mark = None;
+                        return true;
+                    }
+                    let marked = *mark.get_or_insert(now);
+                    marked > now.saturating_sub(grace)
+                });
+                for (n, (id, object)) in (0_u8..).zip(&chunks) {
+                    let found = f.service.get_chunk(f.account, f.collection, *id).await;
+                    if stored.contains_key(&n) {
+                        assert_eq!(found.as_ref(), Ok(object), "chunk {n} is gone too early");
                     } else {
-                        assert_eq!(stored, Err(ServiceError::NotFound), "garbage survived");
+                        assert_eq!(found, Err(ServiceError::NotFound), "chunk {n} survived");
+                    }
+                    if needed.contains(id) {
+                        assert!(found.is_ok(), "a needed chunk is gone");
                     }
                 }
                 assert!(f.service.fsck().await.unwrap().is_clean());

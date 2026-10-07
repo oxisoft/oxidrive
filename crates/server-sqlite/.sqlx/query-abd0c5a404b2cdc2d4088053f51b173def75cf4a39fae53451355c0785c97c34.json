@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE accounts SET label = (SELECT label FROM invites WHERE hash = ?) WHERE id = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "abd0c5a404b2cdc2d4088053f51b173def75cf4a39fae53451355c0785c97c34"
+}

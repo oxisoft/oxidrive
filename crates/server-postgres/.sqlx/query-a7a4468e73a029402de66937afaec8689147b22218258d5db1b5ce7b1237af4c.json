@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT c.account, ch.collection, ch.chunk, ch.size, ch.stored_ms FROM chunks ch\n             JOIN collections c ON c.id = ch.collection\n             WHERE (ch.collection, ch.chunk) > ($1, $2)\n             ORDER BY ch.collection, ch.chunk LIMIT $3",
+  "query": "SELECT c.account, ch.collection, ch.chunk, ch.size, ch.stored_ms, ch.garbage_ms\n             FROM chunks ch\n             JOIN collections c ON c.id = ch.collection\n             WHERE ch.garbage_ms <= $1\n               AND NOT EXISTS (SELECT 1 FROM record_chunks rc\n                               WHERE rc.collection = ch.collection AND rc.chunk = ch.chunk)\n               AND NOT EXISTS (SELECT 1 FROM lease_chunks lc JOIN leases l ON l.id = lc.lease\n                               WHERE l.collection = ch.collection AND lc.chunk = ch.chunk\n                                 AND l.expires_ms > $2)\n             ORDER BY ch.collection, ch.chunk LIMIT $3",
   "describe": {
     "columns": [
       {
@@ -57,12 +57,23 @@
             "name": "stored_ms"
           }
         }
+      },
+      {
+        "ordinal": 5,
+        "name": "garbage_ms",
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "chunks",
+            "name": "garbage_ms"
+          }
+        }
       }
     ],
     "parameters": {
       "Left": [
-        "Bytea",
-        "Bytea",
+        "Int8",
+        "Int8",
         "Int8"
       ]
     },
@@ -71,8 +82,9 @@
       false,
       false,
       false,
-      false
+      false,
+      true
     ]
   },
-  "hash": "92fce07864d7ed089c9483ecd987e1b761583f4bb95ca026abf34f93fc633909"
+  "hash": "a7a4468e73a029402de66937afaec8689147b22218258d5db1b5ce7b1237af4c"
 }

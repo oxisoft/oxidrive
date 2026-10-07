@@ -52,6 +52,10 @@ skip = [
   { crate = "r-efi@5.3.0", reason = "comes with getrandom 0.3 (rand 0.9), see above" },
   { crate = "hashbrown@0.14.5", reason = "dashmap 6 (governor's keyed rate limiters) still uses hashbrown 0.14; remove once dashmap updates" },
   { crate = "base64@0.22.1", reason = "axum 0.8.9 and sqlx-core 0.9.0 still use base64 0.22 while hyper-util's client (reqwest, tests only) uses 0.23; remove once they update" },
+  { crate = "toml@0.8.23", reason = "sqlx-core 0.9.0 (its sqlx.toml support) still uses toml 0.8 while the server's config file uses toml 1.1; remove once sqlx updates" },
+  { crate = "toml_datetime@0.6.11", reason = "comes with toml 0.8 (sqlx-core 0.9.0), see above" },
+  { crate = "serde_spanned@0.6.9", reason = "comes with toml 0.8 (sqlx-core 0.9.0), see above" },
+  { crate = "winnow@0.7.15", reason = "comes with toml 0.8 (sqlx-core 0.9.0), see above" },
 ]
 
 [sources]

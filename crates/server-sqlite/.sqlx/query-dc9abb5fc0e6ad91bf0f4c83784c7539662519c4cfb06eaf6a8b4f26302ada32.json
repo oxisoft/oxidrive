@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE accounts SET deleted_ms = ? WHERE id = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "dc9abb5fc0e6ad91bf0f4c83784c7539662519c4cfb06eaf6a8b4f26302ada32"
+}

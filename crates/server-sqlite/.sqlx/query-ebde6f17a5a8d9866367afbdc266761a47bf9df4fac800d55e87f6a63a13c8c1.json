@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE chunks SET garbage_ms = NULL\n             WHERE garbage_ms IS NOT NULL\n               AND (EXISTS (SELECT 1 FROM record_chunks rc\n                            WHERE rc.collection = chunks.collection AND rc.chunk = chunks.chunk)\n                    OR EXISTS (SELECT 1 FROM lease_chunks lc JOIN leases l ON l.id = lc.lease\n                               WHERE l.collection = chunks.collection\n                                 AND lc.chunk = chunks.chunk AND l.expires_ms > ?))",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": []
+  },
+  "hash": "ebde6f17a5a8d9866367afbdc266761a47bf9df4fac800d55e87f6a63a13c8c1"
+}

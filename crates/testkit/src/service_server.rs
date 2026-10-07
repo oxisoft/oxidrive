@@ -4,6 +4,7 @@
 //! [`MemServer`]: crate::MemServer
 
 use std::future::Future;
+use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use oxisoft_drive_core::{ServerApi, ServerError};
@@ -33,8 +34,12 @@ pub struct ServiceServer<M> {
     service: RealService<M>,
     runtime: tokio::runtime::Runtime,
     account: AccountId,
-    _dir: tempfile::TempDir,
+    /// The temporary data directory, removed with the server, if it made one.
+    temporary: Option<tempfile::TempDir>,
 }
+
+/// The account every [`ServiceServer`] sets up.
+pub const ACCOUNT: AccountId = AccountId::from_bytes([5; 16]);
 
 /// Why a real server couldn't be set up.
 #[derive(Debug, thiserror::Error)]
@@ -53,12 +58,59 @@ impl ServiceServer<SqliteStore> {
     /// If the database or the account can't be set up.
     pub fn sqlite(trusted: usize) -> Result<Self, SetupError> {
         let dir = tempfile::tempdir().map_err(setup)?;
+        let mut server = Self::sqlite_at(dir.path(), Some(trusted), Settings::default())?;
+        server.temporary = Some(dir);
+        Ok(server)
+    }
+
+    /// A server in `data_dir` laid out as the server binary lays it out (`meta.sqlite`,
+    /// `objects/`): new with `trusted` devices, or `None` for an existing one, such as a
+    /// restored server.
+    ///
+    /// # Errors
+    ///
+    /// If the database or the account can't be set up.
+    pub fn sqlite_at(
+        data_dir: &Path,
+        trusted: Option<usize>,
+        settings: Settings,
+    ) -> Result<Self, SetupError> {
+        std::fs::create_dir_all(data_dir).map_err(setup)?;
         let runtime = runtime()?;
         let store = runtime
-            .block_on(SqliteStore::open(&dir.path().join("meta.db")))
+            .block_on(SqliteStore::open(&data_dir.join("meta.sqlite")))
             .map_err(setup)?;
-        Self::new(store, runtime, dir, trusted)
+        Self::new(store, runtime, data_dir, trusted, settings)
     }
+}
+
+/// Creates a new database on the PostgreSQL server at `base_url` (whose user may create
+/// databases) and returns its URL.
+///
+/// # Errors
+///
+/// If the database can't be created.
+pub async fn new_postgres_database(base_url: &str) -> Result<String, SetupError> {
+    static NEXT: AtomicU64 = AtomicU64::new(0);
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |elapsed| elapsed.as_nanos());
+    let name = format!(
+        "sim{}_{}_{}",
+        std::process::id(),
+        stamp,
+        NEXT.fetch_add(1, Ordering::Relaxed)
+    );
+    let (prefix, _) = base_url
+        .rsplit_once('/')
+        .ok_or_else(|| setup("a PostgreSQL URL ends in /database"))?;
+    let mut admin = sqlx::PgConnection::connect(base_url).await.map_err(setup)?;
+    // The name is made of letters, digits and underscores only.
+    sqlx::query(sqlx::AssertSqlSafe(format!("CREATE DATABASE {name}")))
+        .execute(&mut admin)
+        .await
+        .map_err(setup)?;
+    Ok(format!("{prefix}/{name}"))
 }
 
 impl ServiceServer<PostgresStore> {
@@ -69,33 +121,28 @@ impl ServiceServer<PostgresStore> {
     ///
     /// If the database or the account can't be set up.
     pub fn postgres(base_url: &str, trusted: usize) -> Result<Self, SetupError> {
-        static NEXT: AtomicU64 = AtomicU64::new(0);
         let dir = tempfile::tempdir().map_err(setup)?;
+        let url = runtime()?.block_on(new_postgres_database(base_url))?;
+        let mut server = Self::postgres_at(&url, dir.path(), Some(trusted), Settings::default())?;
+        server.temporary = Some(dir);
+        Ok(server)
+    }
+
+    /// A server on the PostgreSQL database at `url` with its objects in `data_dir/objects`:
+    /// new with `trusted` devices, or `None` for an existing one, such as a restored server.
+    ///
+    /// # Errors
+    ///
+    /// If the database or the account can't be set up.
+    pub fn postgres_at(
+        url: &str,
+        data_dir: &Path,
+        trusted: Option<usize>,
+        settings: Settings,
+    ) -> Result<Self, SetupError> {
         let runtime = runtime()?;
-        let stamp = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map_or(0, |elapsed| elapsed.as_nanos());
-        let name = format!(
-            "sim{}_{}_{}",
-            std::process::id(),
-            stamp,
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        );
-        let (prefix, _) = base_url
-            .rsplit_once('/')
-            .ok_or_else(|| setup("a PostgreSQL URL ends in /database"))?;
-        let store = runtime.block_on(async {
-            let mut admin = sqlx::PgConnection::connect(base_url).await.map_err(setup)?;
-            // The name is made of letters, digits and underscores only.
-            sqlx::query(sqlx::AssertSqlSafe(format!("CREATE DATABASE {name}")))
-                .execute(&mut admin)
-                .await
-                .map_err(setup)?;
-            PostgresStore::open(&format!("{prefix}/{name}"))
-                .await
-                .map_err(setup)
-        })?;
-        Self::new(store, runtime, dir, trusted)
+        let store = runtime.block_on(PostgresStore::open(url)).map_err(setup)?;
+        Self::new(store, runtime, data_dir, trusted, settings)
     }
 }
 
@@ -110,19 +157,31 @@ impl<M: MetaStore> ServiceServer<M> {
     fn new(
         store: M,
         runtime: tokio::runtime::Runtime,
-        dir: tempfile::TempDir,
-        trusted: usize,
+        data_dir: &Path,
+        trusted: Option<usize>,
+        settings: Settings,
     ) -> Result<Self, SetupError> {
-        let blobs = FsBlobStore::new(&dir.path().join("blobs")).map_err(setup)?;
+        // Each server its own random stream, as real ones draw from the operating system: a
+        // restored server must not repeat the lease IDs its snapshot holds.
+        static SERVERS: AtomicU64 = AtomicU64::new(0);
+        let blobs = FsBlobStore::new(&data_dir.join("objects")).map_err(setup)?;
         let service = Service::new(
             store,
             blobs,
             SystemClock,
-            ChaCha20Rng::seed_from_u64(0),
-            Settings::default(),
+            ChaCha20Rng::seed_from_u64(SERVERS.fetch_add(1, Ordering::Relaxed)),
+            settings,
         );
+        let account = ACCOUNT;
+        let Some(trusted) = trusted else {
+            return Ok(Self {
+                service,
+                runtime,
+                account,
+                temporary: None,
+            });
+        };
         let mut rng = ChaCha20Rng::seed_from_u64(1);
-        let account = AccountId::from_bytes([5; 16]);
         let signing = AccountSigningKey::generate(&mut rng);
         let meta = AccountKey::generate(&mut rng, 0).meta();
         let certificates: Vec<Signed<DeviceCertificate>> = (0..=trusted)
@@ -168,7 +227,7 @@ impl<M: MetaStore> ServiceServer<M> {
             service,
             runtime,
             account,
-            _dir: dir,
+            temporary: None,
         })
     }
 

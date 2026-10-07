@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "DELETE FROM chunks\n                 WHERE collection = ? AND chunk = ? AND garbage_ms <= ?\n                   AND NOT EXISTS (SELECT 1 FROM record_chunks rc\n                                   WHERE rc.collection = chunks.collection\n                                     AND rc.chunk = chunks.chunk)\n                   AND NOT EXISTS (SELECT 1 FROM lease_chunks lc JOIN leases l ON l.id = lc.lease\n                                   WHERE l.collection = chunks.collection\n                                     AND lc.chunk = chunks.chunk AND l.expires_ms > ?)\n                 RETURNING size",
+  "describe": {
+    "columns": [
+      {
+        "name": "size",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "chunks",
+            "name": "size"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 4
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "da8ce2a643662a7c69b10ff259e68d01508640ecee30dcaab40073db7b3eebee"
+}
