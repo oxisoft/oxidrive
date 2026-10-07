@@ -356,7 +356,10 @@ async fn snapshot_sqlite(store: &SqliteStore, dir: &Path) -> Result<(), BackupEr
         _ => {}
     }
     store.snapshot_into(&temporary).await?;
-    std::fs::File::open(&temporary)
+    // Flushing needs write access on Windows.
+    std::fs::File::options()
+        .write(true)
+        .open(&temporary)
         .and_then(|file| file.sync_all())
         .map_err(io("syncing the snapshot"))?;
     std::fs::rename(&temporary, dir.join(SQLITE_FILE)).map_err(io("renaming the snapshot"))?;

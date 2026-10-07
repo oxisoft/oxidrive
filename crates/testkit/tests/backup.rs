@@ -132,6 +132,7 @@ trait Server: oxisoft_drive_core::ServerApi + Sized + 'static {
         settings: Settings,
     ) -> Self;
     fn gc(&self);
+    fn end_leases(&self);
     fn repair(&self) -> RestoreReport;
     fn retention_zero(&self);
 }
@@ -155,6 +156,12 @@ macro_rules! server_impl {
                     self.service().prune().await.unwrap();
                     self.service().collect_garbage().await.unwrap();
                 });
+            }
+
+            fn end_leases(&self) {
+                // As if every upload lease had run out.
+                self.run(self.service().meta().drop_expired_leases(u64::MAX))
+                    .unwrap();
             }
 
             fn repair(&self) -> RestoreReport {
@@ -190,12 +197,10 @@ fn round_trip<S: Server>(backend: &Backend) {
     let root = tempfile::tempdir().unwrap();
     let source_dir = root.path().join("source");
     let source_db = backend.database();
-    // The service deletes garbage at once and upload leases end after a second, so the
-    // second backup has objects to drop; the backup's own check uses the config's
-    // (generous) grace period.
+    // The service deletes garbage at once, so the second backup has objects to drop; the
+    // backup's own check uses the config's (generous) grace period.
     let settings = Settings {
         garbage_grace_ms: 0,
-        lease_ms: 1000,
         ..Settings::default()
     };
     let config = backend.config(&source_dir, &source_db, "1d");
@@ -232,7 +237,7 @@ fn round_trip<S: Server>(backend: &Backend) {
     a.fs.remove(&path("docs/big.bin"));
     a.fs.write(&path("later.txt"), b"after the first backup");
     a.sync().unwrap();
-    std::thread::sleep(Duration::from_millis(1100));
+    world.server.inner().end_leases();
     world.server.inner().gc();
     let second: Tree = a.tree();
     let two = root.path().join("two");

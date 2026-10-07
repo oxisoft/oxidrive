@@ -3,7 +3,7 @@ resolver = "3"
 members = ["crates/*", "xtask"]
 
 [workspace.package]
-version = "0.2.1"
+version = "0.2.2"
 edition = "2024"
 rust-version = "1.98.1"
 license = "AGPL-3.0-or-later"
@@ -83,14 +83,14 @@ unicode-normalization = "0.1.25"
 zeroize = { version = "1.9.0", features = ["derive"] }
 zstd = { version = "0.14.0", default-features = false }
 
-oxisoft-drive-chunking = { version = "0.2.1", path = "crates/chunking" }
-oxisoft-drive-core = { version = "0.2.1", path = "crates/core" }
-oxisoft-drive-crypto = { version = "0.2.1", path = "crates/crypto" }
-oxisoft-drive-proto = { version = "0.2.1", path = "crates/proto" }
-oxisoft-drive-server = { version = "0.2.1", path = "crates/server" }
-oxisoft-drive-server-postgres = { version = "0.2.1", path = "crates/server-postgres" }
-oxisoft-drive-server-sqlite = { version = "0.2.1", path = "crates/server-sqlite" }
-oxisoft-drive-server-store = { version = "0.2.1", path = "crates/server-store" }
+oxisoft-drive-chunking = { version = "0.2.2", path = "crates/chunking" }
+oxisoft-drive-core = { version = "0.2.2", path = "crates/core" }
+oxisoft-drive-crypto = { version = "0.2.2", path = "crates/crypto" }
+oxisoft-drive-proto = { version = "0.2.2", path = "crates/proto" }
+oxisoft-drive-server = { version = "0.2.2", path = "crates/server" }
+oxisoft-drive-server-postgres = { version = "0.2.2", path = "crates/server-postgres" }
+oxisoft-drive-server-sqlite = { version = "0.2.2", path = "crates/server-sqlite" }
+oxisoft-drive-server-store = { version = "0.2.2", path = "crates/server-store" }
 
 [workspace.lints.rust]
 unsafe_code = "forbid"
