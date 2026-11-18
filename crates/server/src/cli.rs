@@ -88,7 +88,7 @@ pub enum InviteCommand {
     /// Prints a new one-time invite code.
     Create {
         /// How long the code is valid, like `7d` or `12h`.
-        #[arg(long, default_value = "7d", value_parser = humantime::parse_duration)]
+        #[arg(long, default_value = "7d", value_parser = crate::duration::parse_duration)]
         expires: Duration,
         /// A note for the account it creates, shown in `user list`.
         #[arg(long, default_value = "")]
@@ -394,8 +394,8 @@ async fn invite<M: MetaStore + 'static>(
     writeln!(
         out,
         "expires:     {} (in {})",
-        humantime::format_rfc3339_seconds(until),
-        humantime::format_duration(expires)
+        crate::duration::format_rfc3339_seconds(until),
+        crate::duration::format_duration(expires)
     )?;
     if !label.is_empty() {
         writeln!(out, "label:       {label}")?;
@@ -425,7 +425,7 @@ fn size(bytes: u64) -> String {
 
 fn date(ms: u64) -> String {
     let at = UNIX_EPOCH + Duration::from_millis(ms);
-    humantime::format_rfc3339_seconds(at).to_string()
+    crate::duration::format_rfc3339_seconds(at)
 }
 
 const fn status_name(status: AccountStatus) -> &'static str {
@@ -619,7 +619,9 @@ async fn gc<M: MetaStore + 'static>(
             out,
             "marked as garbage:   {} (deleted after {})",
             report.marked,
-            humantime::format_duration(Duration::from_millis(service.settings().garbage_grace_ms))
+            crate::duration::format_duration(Duration::from_millis(
+                service.settings().garbage_grace_ms
+            ))
         )?;
         writeln!(
             out,
@@ -737,7 +739,7 @@ async fn backup_into(
     writeln!(
         out,
         "took {}",
-        humantime::format_duration(Duration::from_secs(
+        crate::duration::format_duration(Duration::from_secs(
             manifest.finished_ms.saturating_sub(manifest.snapshot_ms) / 1000
         ))
     )?;
@@ -782,7 +784,7 @@ async fn restore_from(
 
 fn check_config(config: &Config, out: &mut dyn Write) -> Result<Outcome, CliError> {
     let listen: Vec<String> = config.listen.iter().map(ToString::to_string).collect();
-    let millis = |ms: u64| humantime::format_duration(Duration::from_millis(ms)).to_string();
+    let millis = |ms: u64| crate::duration::format_duration(Duration::from_millis(ms)).to_string();
     writeln!(out, "listen:         {}", listen.join(", "))?;
     writeln!(out, "origin:         {}", config.origin)?;
     writeln!(
@@ -815,7 +817,7 @@ fn check_config(config: &Config, out: &mut dyn Write) -> Result<Outcome, CliErro
     writeln!(
         out,
         "maintenance:    every {}, garbage grace {}",
-        humantime::format_duration(config.maintenance_interval),
+        crate::duration::format_duration(config.maintenance_interval),
         millis(config.settings.garbage_grace_ms)
     )?;
     writeln!(out, "log level:      {}", config.log_level)?;

@@ -20,11 +20,7 @@ targets = [
 # Any advisory (vulnerability, unmaintained, unsound, notice) fails the build.
 unmaintained = "all"
 yanked = "deny"
-ignore = [
-  # humantime is unmaintained (no vulnerability); the server uses it only to parse and print
-  # durations and timestamps. Remove once DR-4 replaces it with an in-crate module (Oxi, 2026-11-18).
-  { id = "RUSTSEC-2026-0542", reason = "unmaintained, no vulnerability; replacement tracked in DR-4" },
-]
+ignore = []
 
 [licenses]
 # Everything must be compatible with AGPL-3.0-or-later.
