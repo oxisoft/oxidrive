@@ -16,7 +16,6 @@ bytesize.workspace = true
 clap.workspace = true
 getrandom.workspace = true
 governor.workspace = true
-humantime.workspace = true
 hyper.workspace = true
 hyper-util.workspace = true
 minicbor.workspace = true

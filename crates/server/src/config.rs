@@ -231,7 +231,7 @@ fn settings(
     limits: &LimitsSection,
 ) -> Result<(Settings, Duration), ConfigError> {
     let duration = |text: &Spanned<String>| {
-        humantime::parse_duration(text.get_ref())
+        crate::duration::parse_duration(text.get_ref())
             .map_err(|error| at.error(text, format!("{:?}: {error}", text.get_ref())))
     };
     let mut settings = Settings {
