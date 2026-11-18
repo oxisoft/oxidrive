@@ -272,10 +272,10 @@ async fn maintenance_runs_on_its_own() {
         .unwrap();
     let running = start(&setup).await;
     wait_until(async || store.chunk(collection, chunk).await.unwrap().is_none()).await;
-    assert_eq!(
-        objects.get(&key).await,
-        Err(oxisoft_drive_server::BlobError::NotFound)
-    );
+    // The row goes first, the object right after it: on a slow runner (Windows CI) the test
+    // can look in between, so wait for the object too instead of reading it once.
+    wait_until(async || objects.get(&key).await == Err(oxisoft_drive_server::BlobError::NotFound))
+        .await;
     running.shutdown(Duration::from_secs(5)).await;
 }
 
