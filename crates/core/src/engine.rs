@@ -386,6 +386,21 @@ where
             .map(|(node, _)| *node)
     }
 
+    /// The node that holds `path` on this file system: on a case-insensitive one, a node at
+    /// `a` holds `A` too (they are one entry on disk).
+    fn occupant_of(&self, run: &Run, path: &RelPath) -> Option<NodeId> {
+        if !self.fs.rules().case_insensitive {
+            return Self::owner_of(run, path);
+        }
+        let folded = path.fold_case();
+        Self::owner_of(run, path).or_else(|| {
+            run.locations
+                .iter()
+                .find(|(_, location)| location.fold_case() == folded)
+                .map(|(node, _)| *node)
+        })
+    }
+
     /// Moves `from` (and everything below) to `to`, keeping locations and the index in step.
     async fn relocate(
         &mut self,
@@ -441,7 +456,10 @@ where
                 let Some(path) = self.placed_path(*node, run).await? else {
                     return Ok(StepOutcome::Blocked);
                 };
-                if Self::owner_of(run, &path).is_some_and(|owner| owner != *node) {
+                if self
+                    .occupant_of(run, &path)
+                    .is_some_and(|owner| owner != *node)
+                {
                     return Ok(StepOutcome::Blocked);
                 }
                 match self.fs.stat(&path).await? {
@@ -634,11 +652,15 @@ where
             let Some(target) = self.placed_path(node, run).await? else {
                 continue;
             };
-            let occupant = Self::owner_of(run, &target)
+            let occupant = self
+                .occupant_of(run, &target)
                 .filter(|other| *other != node && moving.contains(other));
             if let Some(occupant) = occupant {
-                let temporary = target.with_name(temporary_name("tmp", occupant));
-                if self.relocate_for_cycle(&target, &temporary, run).await? {
+                // Move the occupant from where it is: on a case-insensitive file system that
+                // may be the target in another case, and the locations follow only the real path.
+                let from = run.locations.get(&occupant).cloned().unwrap_or(target);
+                let temporary = from.with_name(temporary_name("tmp", occupant));
+                if self.relocate_for_cycle(&from, &temporary, run).await? {
                     return Ok(true);
                 }
             }
