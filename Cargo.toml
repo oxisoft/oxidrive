@@ -32,7 +32,7 @@ futures-util = { version = "0.3.34", default-features = false, features = ["sink
 fastcdc = { version = "5.0.0", default-features = false }
 getrandom = { version = "0.4.3", features = ["sys_rng"] }
 governor = "0.10.4"
-hpke = { version = "0.14.1", default-features = false, features = [
+hpke = { version = "0.15.1", default-features = false, features = [
   "alloc",
   "chacha",
   "hkdfsha2",
